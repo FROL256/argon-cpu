@@ -43,10 +43,10 @@ package A0 is
   						
   
   type Flags is record		 
-	N    : STD_LOGIC; -- apply not to the rest of flags
-    Z    : STD_LOGIC; -- Zero
-    LT   : STD_LOGIC; -- Less Than
-    LE   : STD_LOGIC; -- Less Equal
+	N  : STD_LOGIC; -- apply not to the rest of flags
+    Z  : STD_LOGIC; -- Zero
+    LT : STD_LOGIC; -- Less Than
+    LE : STD_LOGIC; -- Less Equal
   end record;				  
   
   
@@ -91,8 +91,8 @@ package A0 is
   
   --
   type Instruction is record
-	imm     : STD_LOGIC;										  
-	wb      : STD_LOGIC;                     -- write back
+	imm     : boolean;										  
+	we      : boolean;                     -- write enable
 	itype   : STD_LOGIC_VECTOR (1 downto 0); -- instruction type  
     code    : STD_LOGIC_VECTOR (3 downto 0);	
     reg0    : REGT;
@@ -100,13 +100,14 @@ package A0 is
     reg2    : REGT;	  
 	memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions
 	flags   : Flags; 
-	invalid : STD_LOGIC; 
+	invalid : boolean; 
   end record;			   
   
-  constant CMD_NOP : Instruction := (imm => '0', wb=>'0', code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => '0'), invalid => '0');
+  constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => '0'), invalid => false);
   
   function ToInstruction(data : WORD) return Instruction; 
-  function ToStdLogic(L: BOOLEAN) return std_logic;
+  function ToStdLogic(L: BOOLEAN) return std_logic;	
+  function ToBoolean(L: std_logic) return BOOLEAN;
   
 end A0;
 
@@ -117,15 +118,15 @@ package body A0 is
   function ToInstruction(data : WORD) return Instruction is
     variable cmd : Instruction;
   begin	
-	cmd.imm      := data(31);						          -- first bit is 'immediate' flag	
-	cmd.wb       := data(30);								  -- second is 'write back' flag
+	cmd.imm      := ToBoolean(data(31));						          -- first bit is 'immediate' flag	
+	cmd.we       := ToBoolean(data(30));								  -- second is 'write back' flag
 	cmd.itype	 := data(29 downto 28);						  -- next 2-bit instruction type
 	cmd.code     := data(27 downto 24);				          -- next 4 bit for opcodes	
 	cmd.reg0     := to_uint(data(23 downto 20));			  -- next 4 bits for reg0
 	cmd.reg1     := to_uint(data(19 downto 16));			  -- next 4 bits for reg1
 	cmd.reg2     := to_uint(data(15 downto 12));			  -- next 4 bits for reg2
     cmd.memOffs	 :=         data(11 downto 4);
-    cmd.invalid  := '0';	
+    cmd.invalid  := false;	
 	cmd.flags.N  := data(3);								  -- last 4 bits for flags
 	cmd.flags.Z  := data(2);
 	cmd.flags.LE := data(1);
@@ -138,10 +139,19 @@ package body A0 is
     if L then
       return('1');
      else
-       return('0');
+      return('0');
     end if;
-   end ToStdLogic; 
+  end ToStdLogic; 	 
   
+  
+  function ToBoolean(L: std_logic) return BOOLEAN is
+  begin
+    if L = '1' then
+      return true;
+     else
+      return false;
+    end if;
+  end ToBoolean; 	 
   
 end A0;
 
@@ -236,7 +246,7 @@ BEGIN
     -------------- fetch input ----------------
     variable cmdF    : Instruction;
   	variable rawCmdF : WORD;  				   
-	variable stall   : STD_LOGIC := '0';
+	variable stall   : boolean := false;
 	-------------- fetch input ----------------	
 	
 	-------------- mem input ----------------
@@ -269,10 +279,12 @@ BEGIN
 	 
 	 rawCmdF := program(ip);
 	 cmdF    := ToInstruction(rawCmdF);
-	
-	 --mem_offs  <= rawCmdF(11 downto 4); -- used only by memory instructions
-	
-	 if stall = '1' or cmdD.imm = '1' then -- push nop to cmdD in next cycle, cause if cmdD is immediate, next instructions is it's data
+	 
+	 -- this is the only case for 5-stage RISC processor when we must stall 
+     --
+	 stall   := (cmdF.itype = INSTR_ALUI) and (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2); 
+	 
+	 if stall or cmdD.imm then -- push nop to cmdD in next cycle, cause if cmdD is immediate, next instructions is it's data
 	   cmdD <= CMD_NOP;
 	 else
 	   cmdD <= cmdF;
@@ -292,7 +304,7 @@ BEGIN
 	
 	 op1_inputX <= regs(cmdD.reg1);
 	
-	 if cmdD.imm = '1' then		   
+	 if cmdD.imm then		   
 	   op2_inputX <= rawCmdF;
 	 else  
 	   op2_inputX <= regs(cmdD.reg2); -- to_word(cmdF)
@@ -305,7 +317,7 @@ BEGIN
 	 
 	 
 	 ---- control unit ----
-	 if stall = '1' then
+	 if stall then
 	   ip <= ip;
 	 else
 	   ip <= ip+1;
@@ -318,17 +330,17 @@ BEGIN
 	 if cmdX.itype = INSTR_ALUI then 				
 		
 	   -------------------------- bypassing ----------------------------	 
-	   if    cmdM.reg0 = cmdX.reg1 and cmdM.wb = '1' then   -- bypass result from X to op1
+	   if    cmdM.reg0 = cmdX.reg1 and cmdM.we then   -- bypass result from X to op1
 	     xA := resultX;
-       elsif cmdW.reg0 = cmdX.reg1 and cmdW.wb = '1' then   -- bypass result from M to op1
+       elsif cmdW.reg0 = cmdX.reg1 and cmdW.we then   -- bypass result from M to op1
 		 xA := resultM; 
 	   else	
 	     xA := op1_inputX;
 	   end if;
 		 
-	   if    cmdM.reg0 = cmdX.reg2 and cmdM.wb = '1' then   -- bypass result from X to op2
+	   if    cmdM.reg0 = cmdX.reg2 and cmdM.we then   -- bypass result from X to op2
 	     xB := resultX;
-       elsif cmdW.reg0 = cmdX.reg2 and cmdW.wb = '1' then   -- bypass result from M to op2
+       elsif cmdW.reg0 = cmdX.reg2 and cmdW.we then   -- bypass result from M to op2
 		 xB := resultM; 
 	   else	
 	     xB := op2_inputX;
@@ -380,13 +392,13 @@ BEGIN
 	
 	 if cmdM.itype = INSTR_MEM then 		
 		 
-       if cmdW.reg0 = cmdM.reg2 and cmdW.wb = '1' then -- bypass result from M to address
+       if cmdW.reg0 = cmdM.reg2 and cmdW.we then -- bypass result from M to address
 	     address := to_uint(resultM)  + to_uint(cmdM.memOffs);
        else	
 	     address := to_uint(op2_inputM) + to_uint(cmdM.memOffs);
 	   end if;
 		 
-	   if cmdW.reg0 = cmdM.reg1 and cmdW.wb = '1' then -- bypass result from M to data
+	   if cmdW.reg0 = cmdM.reg1 and cmdW.we then -- bypass result from M to data
 		 memIn := resultM;
 	   else
 	     memIn := op1_inputM; 
@@ -407,7 +419,7 @@ BEGIN
 	 
 	 
 	 ---- write back   ----	  
-	 if cmdW.wb = '1' and not cmdW.invalid = '1' then
+	 if cmdW.we and not cmdW.invalid then
 	   regs(cmdW.reg0) <= resultM;
 	 end if;
 	 ---- write back   ----

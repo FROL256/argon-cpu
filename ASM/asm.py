@@ -1,3 +1,4 @@
+import ctypes
 
 cmdDict = {'nop' : 0, 
            'mov' : 1, 
@@ -17,7 +18,7 @@ cmdDict = {'nop' : 0,
 		   'jmp' : 1,  ##########
 		   'hlt' : 2,
 		   'int' : 3}
-
+   		   
 def encodeCommand(tokens):
   
   bits = 0x00000000
@@ -53,7 +54,6 @@ def encodeCommand(tokens):
   if len(tokens) < 5: return bits	
   ## //////////////////////////////////////////////////////////////////////////////////  registers
   
-  '''
   r0 = int(tokens[4][1:])
   bits |= (r0 << 20)
   
@@ -66,12 +66,36 @@ def encodeCommand(tokens):
   
   r2 = int(tokens[6][1:])
   bits |= (r2 << 12)
-  '''
   
   if len(tokens) < 8: return bits
   ## //////////////////////////////////////////////////////////////////////////////////  mem offset
+
+  memOffs = int(tokens[7])
+  if memOffs <= 255:
+    bits |= (r2 << 8)
   
+  if len(tokens) < 10: return bits
   ## //////////////////////////////////////////////////////////////////////////////////  flags
+  
+  cond = tokens[9]
+  
+  # N,Z,LT,LE
+  flags = 0
+  
+  if cond == 'z' or cond == 'eq':
+    flags = 4
+  elif cond == 'nz' or cond == 'ne':
+    flags = 8+4	
+  elif cond == 'lt':
+    flags = 2
+  elif cond == 'gt':
+    flags = 8+1
+  elif cond == 'ge':
+    flags = 8+2
+  elif cond == 'le':
+    flags = 1
+  
+  bits |= flags
   
   return bits
 
@@ -92,15 +116,20 @@ def encodeLine(tokens):
 def main():
   
   f = open("add_numbers.asm")
+  o = open("out.txt", "w")
   
   for line in f:
-    tokens = line.rstrip().split(',')
-    cmdBin = encodeLine(tokens)
+    tokens = line.rstrip().replace(" ", "").split(',')
     print tokens
-    #print cmdBin
+    cmdBin = encodeLine(tokens)
+    strHex = hex(cmdBin)
+    if strHex[-1] == 'L':
+      strHex = strHex[:-1]
+    o.write(strHex)
+    o.write("\n")
   
   f.close()  
-
+  o.close()
 
 main()  
 print "Ok"

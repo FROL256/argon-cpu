@@ -43,10 +43,10 @@ package A0 is
   						
   
   type Flags is record		 
-	N  : STD_LOGIC; -- apply not to the rest of flags
-    Z  : STD_LOGIC; -- Zero
-    LT : STD_LOGIC; -- Less Than
-    LE : STD_LOGIC; -- Less Equal
+	N  : boolean; -- apply not to the rest of flags
+    Z  : boolean; -- Zero
+    LT : boolean; -- Less Than
+    LE : boolean; -- Less Equal
   end record;				  
   
   
@@ -103,7 +103,7 @@ package A0 is
 	invalid : boolean; 
   end record;			   
   
-  constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => '0'), invalid => false);
+  constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => false), invalid => false);
   
   function ToInstruction(data : WORD) return Instruction; 
   function ToStdLogic(L: BOOLEAN) return std_logic;	
@@ -127,10 +127,10 @@ package body A0 is
 	cmd.reg2     := to_uint(data(15 downto 12));			  -- next 4 bits for reg2
     cmd.memOffs	 :=         data(11 downto 4);
     cmd.invalid  := false;	
-	cmd.flags.N  := data(3);								  -- last 4 bits for flags
-	cmd.flags.Z  := data(2);
-	cmd.flags.LE := data(1);
-	cmd.flags.LT := data(0);  
+	cmd.flags.N  := ToBoolean(data(3));						  -- last 4 bits for flags
+	cmd.flags.Z  := ToBoolean(data(2));
+	cmd.flags.LE := ToBoolean(data(1));
+	cmd.flags.LT := ToBoolean(data(0));  
     return cmd;
   end ToInstruction;
 
@@ -357,10 +357,10 @@ BEGIN
         when A_ADD =>   resultX <= to_word(iA + iB); -- and write carry flag
         when A_SUB =>   resultX <= to_word(iA - iB); -- and write carry flag						 
              
-        when A_CMP =>   flags.Z  <= '0'; -- (iA = iB); 
-	                    flags.N  <= '0';
-                        flags.LE <= ToStdLogic(iA <= iB); 
-                        flags.LT <= ToStdLogic(iA <  iB);
+        when A_CMP =>   flags.Z  <= (iA = iB);
+                        flags.LE <= (iA <= iB); 
+                        flags.LT <= (iA < iB); 
+						flags.N  <= false;
 					    resultX  <= x"00000000";
                           
         when A_AND =>   resultX <= xA and xB;

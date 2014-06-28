@@ -113,23 +113,63 @@ def encodeLine(tokens):
   else:
     return encodeCommand(tokens)
 	
-def main():
+def main(inFileName, outFileName, isBinary):
   
-  f = open("add_numbers.asm")
-  o = open("out.txt", "w")
+  openFileParams = "w"
+  #if isBinary: openFileParams = "wb"
+  
+  f = open(inFileName)
+  o = open(outFileName, openFileParams)
   
   for line in f:
     tokens = line.rstrip().replace(" ", "").split(',')
     print tokens
     cmdBin = encodeLine(tokens)
-    strHex = hex(cmdBin)
-    if strHex[-1] == 'L':
-      strHex = strHex[:-1]
-    o.write(strHex)
-    o.write("\n")
+	
+    if isBinary:
+      bitStr = bin(cmdBin)[2:]
+      o.write(bitStr.zfill(32))
+      o.write("\n")
+    else:
+      strHex = hex(cmdBin)
+      if strHex[-1] == 'L':
+        strHex = strHex[:-1]
+      o.write(strHex)
+      o.write("\n")
   
   f.close()  
   o.close()
 
-main()  
+def mainVHDL(inFileName, outFileName):
+  
+  f = open(inFileName)
+  o = open(outFileName, "w")
+  
+  o.write('signal program : PROGRAM_MEMORY := \n');
+  o.write('  ( \n');
+  
+  i = 0
+  for line in f:
+    tokens = line.rstrip().replace(" ", "").split(',')
+    print tokens
+    cmdBin = encodeLine(tokens)
+    strHex = hex(cmdBin)
+	
+    if strHex[-1] == 'L':
+      strHex = strHex[:-1]
+	
+    if len(strHex) < 8:
+      strHex = strHex + "0" * (10 - len(strHex))
+    
+    o.write("  " + str(i) + " => x\"" + strHex[2:] + "\",\n")
+    i = i+1
+  
+  o.write('  others => x"00000000" \n');
+  o.write('  ); \n');
+  f.close()  
+  o.close()  
+  
+  
+main("add_numbers.asm", "out.txt", True) 
+mainVHDL("add_numbers.asm", "out.vhdl")   
 print "Ok"

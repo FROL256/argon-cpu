@@ -167,6 +167,8 @@ USE work.DE2_115.all;
 USE work.UTILS.all;
 USE work.A0.all;
 
+use STD.textio.all;				   -- for reading files
+use ieee.std_logic_textio.all;	   -- for reading files
 
 ENTITY A1_CPU IS
 	PORT(	  
@@ -183,27 +185,14 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal clk  : STD_LOGIC := '0';  
   signal rst  : STD_LOGIC := '0';
   
-  signal ip   : integer range 0 to 16384 := 0;	-- instruction pointer
+  signal ip   : integer range 0 to 16383 := 0;	-- instruction pointer
   
   signal cmdD : Instruction := CMD_NOP; 
   signal cmdX : Instruction := CMD_NOP; 
   signal cmdM : Instruction := CMD_NOP;
   signal cmdW : Instruction := CMD_NOP;
  
-  signal program  : PROGRAM_MEMORY  := 
-  ( 
-   0 => x"C1100000",
-   1 => x"00000003",
-   2 => x"C1200000",
-   3 => x"00000002",
-   4 => x"42012000",
-   5 => x"12000000",
-   6 => x"12000000",
-   7 => x"12000000",
-   others => x"00000000"
-   );  
-  
-  
+  signal program  : PROGRAM_MEMORY  := ( others => x"00000000"); -- in real implementation this should be out of chip
   signal memory   : L1_MEMORY       := (others => x"00000000");  -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
@@ -218,15 +207,37 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal resultX     : WORD := x"00000000"; -- after ALU 
   signal resultM     : WORD := x"00000000"; -- after MEM	
   
-  signal flags     : Flags;
+  signal flags     : Flags;	
   
 BEGIN	
   
-  -- this is for simulation purposes only 
-  --
-  clock : process
-  begin
-	
+  ------------------------------------ this is only for simulation purposes ------------------------------------
+  clock : process  
+    file    file_PROG : text; -- file there the program is located 
+    variable v_ILINE  : line;  
+    variable v_CMD    : WORD; 
+	variable i        : integer := 0;
+  begin		  
+	  
+   clk <= '0';
+   rst <= '0';
+   
+   ------------------------------------ read program from file -------------------------------------------------
+   file_open(file_PROG, "../../ASM/out.txt",  read_mode);
+   
+   while not endfile(file_PROG) loop   
+	   
+     readline(file_PROG, v_ILINE); 
+     read(v_ILINE, v_CMD);
+	 
+	 program(i) <= v_CMD;
+   	 i := i+1;		
+		
+   end loop;
+   
+   file_close(file_PROG);
+   ------------------------------------ reset and begin to work -------------------------------------------------  
+   
    rst <= '1'; 
    wait for 10 ns;	 
    
@@ -239,7 +250,9 @@ BEGIN
    end loop;
    
   end process clock;
-  
+  ------------------------------------ this is only for simulation purposes ------------------------------------
+	  
+	  
   
   main : process(clk,rst)
   
@@ -266,8 +279,11 @@ BEGIN
 
    if (rst = '1') then
 
-     ip    <= 0;
-	 cmdD  <= CMD_NOP;
+     ip   <= 0;
+	 cmdD <= CMD_NOP; 
+	 cmdX <= CMD_NOP; 
+	 cmdM <= CMD_NOP; 
+	 cmdW <= CMD_NOP; 
 	   
    elsif rising_edge(clk) then	   
 	
@@ -281,8 +297,13 @@ BEGIN
 	 cmdF    := ToInstruction(rawCmdF);
 	 
 	 -- this is the only case for 5-stage RISC processor when we must stall 
-     --
-	 stall   := (cmdF.itype = INSTR_ALUI) and (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2); 
+	 -- load R0, [R1+2] --> F D X M W	   | bypass after M to X
+	 -- add R3, R0, R1  -->   F F D X M W  |
+     -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
+	 --
+	 stall   := (cmdF.itype = INSTR_ALUI) and (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2);
+	 
+	 stall   := stall or ( (cmdF.itype = INSTR_CNTR) and cmdF.code(1 downto 0) = C_HLT); -- and this is specially for hlt command
 	 
 	 if stall or cmdD.imm then -- push nop to cmdD in next cycle, cause if cmdD is immediate, next instructions is it's data
 	   cmdD <= CMD_NOP;
@@ -315,8 +336,8 @@ BEGIN
 	 
 	 ---- register fetch ----
 	 
-	 
-	 ---- control unit ----
+		 
+	 ---- control unit ----	 
 	 if stall then
 	   ip <= ip;
 	 else

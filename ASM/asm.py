@@ -72,7 +72,7 @@ def encodeCommand(tokens):
 
   memOffs = int(tokens[7])
   if memOffs <= 255:
-    bits |= (r2 << 8)
+    bits |= (memOffs << 4)
   
   if len(tokens) < 10: return bits
   ## //////////////////////////////////////////////////////////////////////////////////  flags
@@ -123,7 +123,7 @@ def main(inFileName, outFileName, isBinary):
   
   for line in f:
     tokens = line.rstrip().replace(" ", "").split(',')
-    print tokens
+    #print tokens
     cmdBin = encodeLine(tokens)
 	
     if isBinary:
@@ -169,7 +169,6 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
   
-  
-main("add_numbers.asm", "out.txt", True) 
-mainVHDL("add_numbers.asm", "out.vhdl")   
+mainVHDL("load_store.asm", "out.vhdl") 
+main("load_store.asm", "out.txt", True)   
 print "Ok"

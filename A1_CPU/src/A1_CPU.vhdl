@@ -191,7 +191,8 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal cmdX : Instruction := CMD_NOP; 
   signal cmdM : Instruction := CMD_NOP;
   signal cmdW : Instruction := CMD_NOP;
- 
+  signal cmdZ : Instruction := CMD_NOP; -- after W stage, need for bypassing from W to M
+  
   signal program  : PROGRAM_MEMORY  := ( others => x"00000000"); -- in real implementation this should be out of chip
   signal memory   : L1_MEMORY       := (others => x"00000000");  -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
@@ -206,8 +207,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal resultX     : WORD := x"00000000"; -- after ALU 
   signal resultM     : WORD := x"00000000"; -- after MEM	
+  signal resultW     : WORD := x"00000000"; -- after WB
   
-  signal flags     : Flags;	
+  signal flags       : Flags;	
   
 BEGIN	
   
@@ -317,6 +319,7 @@ BEGIN
 	 cmdX <= cmdD; -- from D to X
 	 cmdM <= cmdX; -- from X to M
 	 cmdW <= cmdM; -- from M to W
+	 cmdZ <= cmdW; -- one more for bypassing from W to M
 	 
 	 ---- instruction fetch and pipeline basics ----   
 	 
@@ -413,14 +416,20 @@ BEGIN
 	
 	 if cmdM.itype = INSTR_MEM then 		
 		 
-       if cmdW.reg0 = cmdM.reg2 and cmdW.we then -- bypass result from M to address
-	     address := to_uint(resultM)  + to_uint(cmdM.memOffs);
-       else	
-	     address := to_uint(op2_inputM) + to_uint(cmdM.memOffs);
+       if cmdW.reg0 = cmdM.reg2 and cmdW.we then -- bypass result from M to address	
+	     address := to_uint(resultM);
+	   elsif cmdZ.reg0 = cmdM.reg2 and cmdZ.we then	-- bypass result from W to address
+       	 address := to_uint(resultW);
+	   else	
+	     address := to_uint(op2_inputM);
 	   end if;
-		 
+	   
+	   address := address + to_uint(cmdM.memOffs);
+	   
 	   if cmdW.reg0 = cmdM.reg1 and cmdW.we then -- bypass result from M to data
-		 memIn := resultM;
+		 memIn := resultM;		 
+	   elsif cmdZ.reg0 = cmdM.reg1 and cmdZ.we then
+		 memIn := resultW;   
 	   else
 	     memIn := op1_inputM; 
 	   end if;
@@ -441,7 +450,8 @@ BEGIN
 	 
 	 ---- write back   ----	  
 	 if cmdW.we and not cmdW.invalid then
-	   regs(cmdW.reg0) <= resultM;
+	   regs(cmdW.reg0) <= resultM;	
+	   resultW         <= resultM;
 	 end if;
 	 ---- write back   ----
 	 

@@ -92,7 +92,7 @@ package A0 is
   --
   type Instruction is record
 	imm     : boolean;										  
-	we      : boolean;                     -- write enable
+	we      : boolean;                       -- write enable
 	itype   : STD_LOGIC_VECTOR (1 downto 0); -- instruction type  
     code    : STD_LOGIC_VECTOR (3 downto 0);	
     reg0    : REGT;

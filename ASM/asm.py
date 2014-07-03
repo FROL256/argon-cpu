@@ -168,7 +168,9 @@ def mainVHDL(inFileName, outFileName):
   o.write('  ); \n');
   f.close()  
   o.close()  
+
+path = "progs\\01_bypass_M_to_M.asm"
   
-mainVHDL("load_store.asm", "out.vhdl") 
-main("load_store.asm", "out.txt", True)   
+mainVHDL(path, "out.vhdl") 
+main(path, "out.txt", True)   
 print "Ok"

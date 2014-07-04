@@ -19,7 +19,7 @@ package A0 is
   constant A_MOV   : STD_LOGIC_VECTOR(3 downto 0) := "0001";
   constant A_ADD   : STD_LOGIC_VECTOR(3 downto 0) := "0010";
   constant A_SUB   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
-  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0100";
+  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0100"; -- Add numbers and Carry Flag
   constant A_CMP   : STD_LOGIC_VECTOR(3 downto 0) := "0101";
   constant A_AND   : STD_LOGIC_VECTOR(3 downto 0) := "0110";
   constant A_OR    : STD_LOGIC_VECTOR(3 downto 0) := "0111";
@@ -28,7 +28,7 @@ package A0 is
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "1010";
   constant A_SHR   : STD_LOGIC_VECTOR(3 downto 0) := "1011";
   constant A_MUL   : STD_LOGIC_VECTOR(3 downto 0) := "1100";
-  constant A_NN1   : STD_LOGIC_VECTOR(3 downto 0) := "1110";
+  constant A_MFH   : STD_LOGIC_VECTOR(3 downto 0) := "1110"; -- Move From High
   constant A_NN2   : STD_LOGIC_VECTOR(3 downto 0) := "1111";
 					  
   constant M_NOP   : STD_LOGIC_VECTOR(1 downto 0) := "00";
@@ -162,7 +162,10 @@ end A0;
 
 LIBRARY ieee;
 LIBRARY work;
-USE ieee.std_logic_1164.all;
+
+USE ieee.std_logic_1164.all; 
+USE ieee.numeric_std.all;
+
 USE work.DE2_115.all;
 USE work.UTILS.all;
 USE work.A0.all;
@@ -208,6 +211,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal resultM     : WORD := x"00000000"; -- after MEM	
   
   signal flags       : Flags;	
+  
+  signal carryBit    : std_logic := '0';  
+  signal highValue   : WORD := x"00000000";
   
 BEGIN	
   
@@ -267,13 +273,13 @@ BEGIN
 	variable memIn   : WORD := x"00000000";    
 	-------------- mem input ----------------
 	
-	-------------- alu input ----------------
+	-------------- alu input and internal ----------------
 	variable xA : WORD := x"00000000"; 
 	variable xB : WORD := x"00000000";	
 	
-	variable iA : integer := 0;
-    variable iB : integer := 0;
-	-------------- alu input ----------------
+	variable rAdd : unsigned(32 downto 0) := (others => '0');	-- result of addition, one more bit for overflow
+	variable rMul : signed(63 downto 0)   := (others => '0');	-- result of multiplication 
+	-------------- alu input and internal ----------------
 	
   begin						
 
@@ -381,35 +387,47 @@ BEGIN
 	   -------------------------- bypassing ----------------------------
 	   
 	   -------------------------- alu core -----------------------------
-	   iA := to_sint(xA);
-       iB := to_sint(xB);
-		 
+	   carryBit  <= '0';	 
+	   highValue <= x"00000000";
+	   
 	   case cmdX.code is	   
         when A_NOP =>   resultX <= x"00000000";
         when A_MOV =>   resultX <= xB;
-        when A_ADD =>   resultX <= to_word(iA + iB); -- and write carry flag
-        when A_SUB =>   resultX <= to_word(iA - iB); -- and write carry flag						 
-             
-        when A_CMP =>   flags.Z  <= (iA = iB);
-                        flags.LE <= (iA <= iB); 
-                        flags.LT <= (iA < iB); 
+        when A_ADD =>   
+		                rAdd := unsigned("0" & xA) + unsigned(xB);
+		                resultX  <= std_logic_vector(rAdd(31 downto 0)); -- and write carry flag
+						carryBit <= rAdd(32);
+        when A_SUB =>  
+		                rAdd := unsigned("0" & xA) - unsigned(xB);
+		                resultX  <= std_logic_vector(rAdd(31 downto 0)); -- and write carry flag
+						carryBit <= rAdd(32);
+        
+		when A_ADC  =>  rAdd := unsigned("0" & xA) + unsigned(xB) + unsigned("0000000000000000000000000000000" & carryBit);
+		                resultX <= std_logic_vector(rAdd(31 downto 0));				
+		
+        when A_CMP =>   flags.Z  <= (signed(xA) =  signed(xB));
+                        flags.LE <= (signed(xA) <= signed(xB));   -- what if numbers are unsigned ... ?
+                        flags.LT <= (signed(xA) <  signed(xB));   -- what if numbers are unsigned ... ?
 						flags.N  <= false;
 					    resultX  <= x"00000000";
                           
         when A_AND =>   resultX <= xA and xB;
-        when A_OR  =>   resultX <= xA  or xB;
-        when A_NOT =>   resultX <= not xA;
+        when A_OR  =>   resultX <= xA or xB;
+        when A_NOT =>   resultX <=    not xA;
         when A_XOR =>   resultX <= xA xor xB;
     
 	    when A_SHL =>   resultX(31 downto 1) <= xB (30 downto 0);
                         resultX(0) <= '0';
                           
         when A_SHR  =>  resultX(31) <= '0';
-                        resultX(30 downto 0) <= xB (31 downto 1);	  
-						  
-        --when A_ADC  =>   resultX <= to_word(iA + carry);	 	
-        when A_MUL  =>   resultX <= to_word(iA * iB);  					  
-        when others =>   resultX <= x"00000000"; report "Error, this command should not pass in to ALU";	   
+                        resultX(30 downto 0) <= xB (31 downto 1);	  	 	
+		
+        when A_MUL  =>  rMul := signed(xA) * signed(xB);
+		                resultX   <= std_logic_vector(rMul(31 downto 0));  
+						highValue <= std_logic_vector(rMul(63 downto 32));
+						
+        when others =>  resultX <= x"00000000"; 
+		                report "Error, this command should not pass in to ALU";	   
       end case; 	 
 	  -------------------------- alu core ----------------------------- 
 

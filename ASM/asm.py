@@ -169,7 +169,7 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
 
-path = "progs\\01_bypass_M_to_M.asm"
+path = "progs\\01_bypass_X_to_X.asm"
   
 mainVHDL(path, "out.vhdl") 
 main(path, "out.txt", True)   

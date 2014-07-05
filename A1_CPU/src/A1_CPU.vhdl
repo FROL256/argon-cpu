@@ -15,21 +15,25 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
  
-  constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";
-  constant A_MOV   : STD_LOGIC_VECTOR(3 downto 0) := "0001";
-  constant A_ADD   : STD_LOGIC_VECTOR(3 downto 0) := "0010";
-  constant A_SUB   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
-  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0100"; -- Add numbers and Carry Flag
-  constant A_CMP   : STD_LOGIC_VECTOR(3 downto 0) := "0101";
-  constant A_AND   : STD_LOGIC_VECTOR(3 downto 0) := "0110";
-  constant A_OR    : STD_LOGIC_VECTOR(3 downto 0) := "0111";
-  constant A_NOT   : STD_LOGIC_VECTOR(3 downto 0) := "1000";
-  constant A_XOR   : STD_LOGIC_VECTOR(3 downto 0) := "1001";
-  constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "1010";
-  constant A_SHR   : STD_LOGIC_VECTOR(3 downto 0) := "1011";
-  constant A_MUL   : STD_LOGIC_VECTOR(3 downto 0) := "1100";
-  constant A_MFH   : STD_LOGIC_VECTOR(3 downto 0) := "1110"; -- Move From High
-  constant A_NN2   : STD_LOGIC_VECTOR(3 downto 0) := "1111";
+  constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
+  constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";
+  constant A_SHR   : STD_LOGIC_VECTOR(3 downto 0) := "0010"; 
+  --constant A_NN1   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
+  
+  constant A_ADD   : STD_LOGIC_VECTOR(3 downto 0) := "0100";
+  constant A_SUB   : STD_LOGIC_VECTOR(3 downto 0) := "0110";
+  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0101"; -- Add numbers and last Carry Flag 
+  constant A_SBC   : STD_LOGIC_VECTOR(3 downto 0) := "0111"; -- Sub numbers and last Carry Flag
+  
+  constant A_AND   : STD_LOGIC_VECTOR(3 downto 0) := "1000";
+  constant A_OR    : STD_LOGIC_VECTOR(3 downto 0) := "1001";
+  constant A_NOT   : STD_LOGIC_VECTOR(3 downto 0) := "1010";
+  constant A_XOR   : STD_LOGIC_VECTOR(3 downto 0) := "1011";
+  
+  constant A_MFH   : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+  constant A_MUL   : STD_LOGIC_VECTOR(3 downto 0) := "1111";
+  --constant A_NN2   : STD_LOGIC_VECTOR(3 downto 0) := "1101";
+  --constant A_NN3   : STD_LOGIC_VECTOR(3 downto 0) := "1110";
 					  
   constant M_NOP   : STD_LOGIC_VECTOR(1 downto 0) := "00";
   constant M_LOAD  : STD_LOGIC_VECTOR(1 downto 0) := "01";
@@ -212,7 +216,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal flags       : Flags;	
   
-  signal carryBit    : std_logic := '0';  
+  signal carryOut    : std_logic := '0';  
   signal highValue   : WORD := x"00000000";
   
 BEGIN	
@@ -274,11 +278,17 @@ BEGIN
 	-------------- mem input ----------------
 	
 	-------------- alu input and internal ----------------
-	variable xA : WORD := x"00000000"; 
-	variable xB : WORD := x"00000000";	
+	variable xA : WORD := x"00000000"; -- first op
+	variable xB : WORD := x"00000000"; -- second op
+	variable yB : WORD := x"00000000"; -- second op passed to adder
+
+	variable rShift : WORD                  := (others => '0');	-- result of shift ops group
+	variable rLog   : WORD                  := (others => '0');	-- result of logic ops group
+	variable rAdd   : unsigned(32 downto 0) := (others => '0');	-- result of add   ops group  
+    variable rMulc  : WORD                  := (others => '0');	-- result of mult  ops group	
+	variable rMul   : unsigned(63 downto 0) := (others => '0');	-- result of true multiplication  
 	
-	variable rAdd : unsigned(32 downto 0) := (others => '0');	-- result of addition, one more bit for overflow
-	variable rMul : signed(63 downto 0)   := (others => '0');	-- result of multiplication 
+	variable carryIn : std_logic := '0';
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -337,16 +347,18 @@ BEGIN
 	   op1_inputX <= regs(cmdD.reg1);			   -- ok, read from register file
      end if; 
 	 
-	 if cmdM.reg0 = cmdD.reg2 and cmdM.we then     -- bypass result from X to op2
-	   op2_inputX <= resultX; 
-	 elsif cmdW.reg0 = cmdD.reg2 and cmdW.we then  -- bypass result from M to op1
-	   op2_inputX <= resultM;
-     else 
-	   if cmdD.imm then		   					   -- ok, read from register file or instruction memory
-	     op2_inputX <= rawCmdF;
-	   else  
-	     op2_inputX <= regs(cmdD.reg2); -- to_word(cmdF)
-       end if;
+	 if cmdD.imm then		   					     -- read from instruction memory and ignore bypassing if commad is immediate
+	   op2_inputX <= rawCmdF;
+	 else 		  
+		 
+	   if cmdM.reg0 = cmdD.reg2 and cmdM.we then     -- bypass result from X to op2
+	     op2_inputX <= resultX; 
+	   elsif cmdW.reg0 = cmdD.reg2 and cmdW.we then  -- bypass result from M to op1
+	     op2_inputX <= resultM;
+       else 
+	     op2_inputX <= regs(cmdD.reg2);              -- ok, read from register file
+	   end if; 
+	   
 	 end if;
 	 
 	 op1_inputM <= op1_inputX;
@@ -377,9 +389,9 @@ BEGIN
 	     xA := op1_inputX;
 	   end if;
 		 
-	   if    cmdM.reg0 = cmdX.reg2 and cmdM.we then   -- bypass result from X to op2
+	   if    cmdM.reg0 = cmdX.reg2 and not cmdX.imm and cmdM.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
 	     xB := resultX;
-       elsif cmdW.reg0 = cmdX.reg2 and cmdW.we then   -- bypass result from M to op2
+       elsif cmdW.reg0 = cmdX.reg2 and not cmdX.imm and cmdW.we then   -- bypass result from M to op2 and ignore bypassing second op for immediate commands
 		 xB := resultM; 
 	   else	
 	     xB := op2_inputX;
@@ -387,49 +399,58 @@ BEGIN
 	   -------------------------- bypassing ----------------------------
 	   
 	   -------------------------- alu core -----------------------------
-	   carryBit  <= '0';	 
-	   highValue <= x"00000000";
 	   
-	   case cmdX.code is	   
-        when A_NOP =>   resultX <= x"00000000";
-        when A_MOV =>   resultX <= xB;
-        when A_ADD =>   
-		                rAdd := unsigned("0" & xA) + unsigned(xB);
-		                resultX  <= std_logic_vector(rAdd(31 downto 0)); -- and write carry flag
-						carryBit <= rAdd(32);
-        when A_SUB =>  
-		                rAdd := unsigned("0" & xA) - unsigned(xB);
-		                resultX  <= std_logic_vector(rAdd(31 downto 0)); -- and write carry flag
-						carryBit <= rAdd(32);
-        
-		when A_ADC  =>  rAdd := unsigned("0" & xA) + unsigned(xB) + unsigned("0000000000000000000000000000000" & carryBit);
-		                resultX <= std_logic_vector(rAdd(31 downto 0));				
-		
-        when A_CMP =>   flags.Z  <= (signed(xA) =  signed(xB));
-                        flags.LE <= (signed(xA) <= signed(xB));   -- what if numbers are unsigned ... ?
-                        flags.LT <= (signed(xA) <  signed(xB));   -- what if numbers are unsigned ... ?
-						flags.N  <= false;
-					    resultX  <= x"00000000";
-                          
-        when A_AND =>   resultX <= xA and xB;
-        when A_OR  =>   resultX <= xA or xB;
-        when A_NOT =>   resultX <=    not xA;
-        when A_XOR =>   resultX <= xA xor xB;
-    
-	    when A_SHL =>   resultX(31 downto 1) <= xB (30 downto 0);
-                        resultX(0) <= '0';
-                          
-        when A_SHR  =>  resultX(31) <= '0';
-                        resultX(30 downto 0) <= xB (31 downto 1);	  	 	
-		
-        when A_MUL  =>  rMul := signed(xA) * signed(xB);
-		                resultX   <= std_logic_vector(rMul(31 downto 0));  
-						highValue <= std_logic_vector(rMul(63 downto 32));
-						
-        when others =>  resultX <= x"00000000"; 
-		                report "Error, this command should not pass in to ALU";	   
-      end case; 	 
-	  -------------------------- alu core ----------------------------- 
+	   -- add group
+	   --
+	   if cmdX.code(1) = '1' then  -- sub commad  
+	     yB := not xB;
+	   else	 
+	     yB := xB;	   
+	   end if;			 
+	  
+	   carryIn := ToStdLogic(cmdX.code(1) = '1' or cmdX.code(0) = '1'); -- sub or add with carry
+	   
+	   rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("0000000000000000000000000000000" & carryIn); -- full 32 bit adder with carry
+	   carryOut <= rAdd(32); 	  
+	   
+	   ----------------------------------------------------- work with flags also here
+	   
+	   rMul := unsigned(xA) * unsigned(xB);				  -- full 32 to 64 bit multiplyer
+	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always right this reg, so we must get the hight reg in next command
+	   
+	   -- logic group
+	   --
+	   case cmdX.code(1 downto 0) is
+	     when "00"   => rLog := xA and xB;	 
+		 when "01"   => rLog := xA or  xB;
+		 when "10"   => rLog :=    not xA;
+		 when others => rLog := xA xor xB;
+	   end case;  
+	   
+	   -- shift group
+	   --
+	   case cmdX.code(1 downto 0) is
+		 when "01"   => rShift := xA(30 downto 0) & '0';  
+		 when "10"   => rShift := '0' & xA(31 downto 1);
+		 when others => rShift := x"00000000";
+	   end case;
+	   
+	   -- mul group
+	   --
+	   case cmdX.code(1 downto 0) is
+		 when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
+		 when others => rMulc := highValue;							  -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+	   end case;
+	   
+	   carryOut  <= '0';	 
+	   
+	   case cmdX.code(3 downto 2) is	   
+         when "00"   => resultX  <= rShift;
+         when "01"   => resultX  <= std_logic_vector(rAdd(31 downto 0));
+         when "10"   => resultX  <= rLog;
+	     when others => resultX  <= rMulc;
+       end case; 	 
+	   -------------------------- alu core ----------------------------- 
 
 	  
 	 else

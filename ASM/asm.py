@@ -1,21 +1,24 @@
 import ctypes
 
 cmdDict = {'nop' : 0, 
-           'mov' : 1, 
-		   'add' : 2,
-		   'sub' : 3,
-		   'adc' : 4,
-		   'cmp' : 5,
-		   'and' : 6,
-		   'or'  : 7,
-		   'not' : 8,
-		   'xor' : 9,
-		   'shl' : 10,
-		   'shr' : 11,
-		   'mul' : 12, ##########
+           'shl' : 1, 
+		   'shr' : 2,
+		   'xxx' : 3,
+		   'add' : 4,
+		   'adc' : 5,
+		   'sub' : 6,
+		   'sbc' : 7,
+		   'and' : 8,
+		   'or'  : 9,
+		   'not' : 10,
+		   'xor' : 11,
+		   'mfh' : 12, 
+		   'mul' : 15, 
+		   
 		   'lw'  : 1,
 		   'sw'  : 2,
-		   'jmp' : 1,  ##########
+		   
+		   'jmp' : 1,  
 		   'hlt' : 2,
 		   'int' : 3}
    		   
@@ -169,7 +172,7 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
 
-path = "progs\\01_bypass_X_to_X.asm"
+path = "add_numbers.asm"
   
 mainVHDL(path, "out.vhdl") 
 main(path, "out.txt", True)   

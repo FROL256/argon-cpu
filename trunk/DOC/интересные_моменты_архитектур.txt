@@ -1,0 +1,7 @@
+
+SPARC:
+1) The condition code register on the SPARC has four bits: Z (Zero), N (Negative), C (Carry), and V (oVerflow). 
+The standard arithmetic operations (e.g., addition and subtraction) do not update the bits in the condition code register. Instead, there are special operations that update the condition code register. 
+The names for these operations have a suffix of ``cc'' to indicate that they update the bits in the condition code register. 
+
+2) jmpl rs , rd | Jumps to [rs] and saves PC to rd | jmpl %r1,%r2

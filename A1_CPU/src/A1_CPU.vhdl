@@ -21,9 +21,9 @@ package A0 is
   --constant A_NN1   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
   
   constant A_ADD   : STD_LOGIC_VECTOR(3 downto 0) := "0100";
-  constant A_SUB   : STD_LOGIC_VECTOR(3 downto 0) := "0110";
-  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0101"; -- Add numbers and last Carry Flag 
-  constant A_SBC   : STD_LOGIC_VECTOR(3 downto 0) := "0111"; -- Sub numbers and last Carry Flag
+  constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0101"; -- x + y + carry
+  constant A_SUB   : STD_LOGIC_VECTOR(3 downto 0) := "0110"; 
+  constant A_SBC   : STD_LOGIC_VECTOR(3 downto 0) := "0111"; -- x - y - carry
   
   constant A_AND   : STD_LOGIC_VECTOR(3 downto 0) := "1000";
   constant A_OR    : STD_LOGIC_VECTOR(3 downto 0) := "1001";
@@ -50,7 +50,9 @@ package A0 is
 	N  : boolean; -- apply not to the rest of flags
     Z  : boolean; -- Zero
     LT : boolean; -- Less Than
-    LE : boolean; -- Less Equal
+    LE : boolean; -- Less Equal	
+	CC : boolean; -- if command set flags
+    S  : boolean; -- if operation is signed
   end record;				  
   
   
@@ -102,7 +104,7 @@ package A0 is
     reg0    : REGT;
     reg1    : REGT;
     reg2    : REGT;	  
-	memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions
+	memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions 
 	flags   : Flags; 
 	invalid : boolean; 
   end record;			   
@@ -122,20 +124,29 @@ package body A0 is
   function ToInstruction(data : WORD) return Instruction is
     variable cmd : Instruction;
   begin	
-	cmd.imm      := ToBoolean(data(31));						          -- first bit is 'immediate' flag	
-	cmd.we       := ToBoolean(data(30));								  -- second is 'write back' flag
+	  
+	cmd.imm      := ToBoolean(data(31));				      -- first bit is 'immediate' flag	
+	cmd.we       := ToBoolean(data(30));					  -- second is 'write enable' flag
 	cmd.itype	 := data(29 downto 28);						  -- next 2-bit instruction type
 	cmd.code     := data(27 downto 24);				          -- next 4 bit for opcodes	
 	cmd.reg0     := to_uint(data(23 downto 20));			  -- next 4 bits for reg0
 	cmd.reg1     := to_uint(data(19 downto 16));			  -- next 4 bits for reg1
-	cmd.reg2     := to_uint(data(15 downto 12));			  -- next 4 bits for reg2
+	cmd.reg2     := to_uint(data(15 downto 12));			  -- next 4 bits for reg2	
     cmd.memOffs	 :=         data(11 downto 4);
-    cmd.invalid  := false;	
+	
+	if cmd.itype = INSTR_ALUI then                            -- don't use memOffs, read flags instead
+      cmd.flags.S  := ToBoolean(cmd.memOffs(7)); 
+	  cmd.flags.CC := ToBoolean(cmd.memOffs(6));
+	end if;
+	
+	cmd.invalid  := false;	
 	cmd.flags.N  := ToBoolean(data(3));						  -- last 4 bits for flags
 	cmd.flags.Z  := ToBoolean(data(2));
 	cmd.flags.LE := ToBoolean(data(1));
-	cmd.flags.LT := ToBoolean(data(0));  
-    return cmd;
+	cmd.flags.LT := ToBoolean(data(0)); 
+	
+    return cmd;	  
+	
   end ToInstruction;
 
   function ToStdLogic(L: BOOLEAN) return std_logic is
@@ -214,7 +225,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal resultX     : WORD := x"00000000"; -- after ALU 
   signal resultM     : WORD := x"00000000"; -- after MEM	
   
-  signal flags       : Flags;	
+  signal flags_Z  : boolean := false; -- Zero
+  signal flags_LT : boolean := false; -- Less Than
+  signal flags_LE : boolean := false; -- Less Equal	
   
   signal carryOut    : std_logic := '0';  
   signal highValue   : WORD := x"00000000";
@@ -288,7 +301,8 @@ BEGIN
     variable rMulc  : WORD                  := (others => '0');	-- result of mult  ops group	
 	variable rMul   : unsigned(63 downto 0) := (others => '0');	-- result of true multiplication  
 	
-	variable carryIn : std_logic := '0';
+	variable carryIn : std_logic := '0'; 
+	variable zero    : std_logic := '0'; 
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -402,21 +416,35 @@ BEGIN
 	   
 	   -- add group
 	   --
-	   if cmdX.code(1) = '1' then  -- sub commad  
+	   if cmdX.code(1) = '1' then  -- sub or sbc  
 	     yB := not xB;
 	   else	 
 	     yB := xB;	   
 	   end if;			 
 	  
-	   carryIn := ToStdLogic(cmdX.code(1) = '1' or cmdX.code(0) = '1'); -- sub or add with carry
+	   carryIn := ToStdLogic(cmdX.code(1 downto 0) = "10" or (cmdX.code(1 downto 0) = "01" and carryOut = '1')); -- SUB or ADC
 	   
-	   rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("0000000000000000000000000000000" & carryIn); -- full 32 bit adder with carry
+	   rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("" & carryIn); -- full 32 bit adder with carry
 	   carryOut <= rAdd(32); 	  
+	   
+	   zero := not (rAdd(31) or rAdd(30) or rAdd(29) or rAdd(28) or rAdd(27) or rAdd(26) or rAdd(25) or rAdd(24) or rAdd(23) or rAdd(22) or 
+	                rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
+	                rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
+	   
+	   if cmdX.flags.CC then
+	   	 flags_Z  <= (zero = '0');
+		 flags_LE <= (rAdd(31) = '1') or (zero = '0');
+		 flags_LT <= (rAdd(31) = '1');  -- sign bit
+	   else
+	     flags_Z  <= flags_Z;
+		 flags_LE <= flags_LE;
+		 flags_LT <= flags_LT;
+	   end if;
 	   
 	   ----------------------------------------------------- work with flags also here
 	   
 	   rMul := unsigned(xA) * unsigned(xB);				  -- full 32 to 64 bit multiplyer
-	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always right this reg, so we must get the hight reg in next command
+	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
 	   
 	   -- logic group
 	   --
@@ -442,8 +470,8 @@ BEGIN
 		 when others => rMulc := highValue;							  -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
 	   end case;
 	   
-	   carryOut  <= '0';	 
-	   
+	   -- get final result	 
+	   --
 	   case cmdX.code(3 downto 2) is	   
          when "00"   => resultX  <= rShift;
          when "01"   => resultX  <= std_logic_vector(rAdd(31 downto 0));

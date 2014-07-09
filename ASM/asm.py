@@ -172,7 +172,7 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
 
-path = "add_numbers.asm"
+path = "progs\\02_add_sint32_neg.asm"
   
 mainVHDL(path, "out.vhdl") 
 main(path, "out.txt", True)   

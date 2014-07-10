@@ -16,9 +16,9 @@ package A0 is
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
-  constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";
-  constant A_SHR   : STD_LOGIC_VECTOR(3 downto 0) := "0010"; 
-  --constant A_NN1   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
+  constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
+  constant A_SHR   : STD_LOGIC_VECTOR(3 downto 0) := "0010";  -- SRA is encoded as signed SHR
+  constant A_MOV   : STD_LOGIC_VECTOR(3 downto 0) := "0011";
   
   constant A_ADD   : STD_LOGIC_VECTOR(3 downto 0) := "0100";
   constant A_ADC   : STD_LOGIC_VECTOR(3 downto 0) := "0101"; -- x + y + carry
@@ -230,7 +230,8 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal flags_LE : boolean := false; -- Less Equal	
   
   signal carryOut    : std_logic := '0';  
-  signal highValue   : WORD := x"00000000";
+  signal highValue   : WORD := x"00000000";	  
+  
   
 BEGIN	
   
@@ -303,6 +304,8 @@ BEGIN
 	
 	variable carryIn : std_logic := '0'; 
 	variable zero    : std_logic := '0'; 
+	
+	variable shiftS  : std_logic := '0'; 
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -414,7 +417,7 @@ BEGIN
 	   
 	   -------------------------- alu core -----------------------------
 	   
-	   -- add group
+	   ----------------------------------------------------------------- add group
 	   --
 	   if cmdX.code(1) = '1' then  -- sub or sbc  
 	     yB := not xB;
@@ -441,12 +444,22 @@ BEGIN
 		 flags_LT <= flags_LT;
 	   end if;
 	   
-	   ----------------------------------------------------- work with flags also here
+	   ----------------------------------------------------------------- mul group	(may be need to optimize, may be not)
+      
+	   if cmdX.flags.S then   
+	     rMul := unsigned(xA) * unsigned(xB);		      -- full 32 to 64 bit signed/unsigned multiplyer;
+	   else
+		 rMul := unsigned(signed(xA) * signed(xB));	
+	   end if;
 	   
-	   rMul := unsigned(xA) * unsigned(xB);				  -- full 32 to 64 bit multiplyer
 	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
 	   
-	   -- logic group
+	   case cmdX.code(1 downto 0) is
+		 when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
+		 when others => rMulc := highValue;							  -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+	   end case;
+	   
+	   ----------------------------------------------------------------- logic group
 	   --
 	   case cmdX.code(1 downto 0) is
 	     when "00"   => rLog := xA and xB;	 
@@ -455,19 +468,22 @@ BEGIN
 		 when others => rLog := xA xor xB;
 	   end case;  
 	   
-	   -- shift group
-	   --
-	   case cmdX.code(1 downto 0) is
-		 when "01"   => rShift := xA(30 downto 0) & '0';  
-		 when "10"   => rShift := '0' & xA(31 downto 1);
-		 when others => rShift := x"00000000";
-	   end case;
+	   ----------------------------------------------------------------- shift group
+	   --	
+	   if cmdX.flags.S then	 
+	     shiftS := xA(31); 	 -- arithmetic shifts
+	   else
+	     shiftS := '0';    	 -- common shifts
+	   end if;
 	   
-	   -- mul group
-	   --
 	   case cmdX.code(1 downto 0) is
-		 when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
-		 when others => rMulc := highValue;							  -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+		 when "01"   => rShift := xA(30 downto 0) & '0';  	 -- replace with sll
+		                if cmdX.flags.S then 
+			 			  rShift(31) := shiftS;
+			  			end if;	 
+		 when "10"   => rShift := shiftS & xA(31 downto 1);	 -- replace with srl
+		 when "11"   => rShift := xA;
+		 when others => rShift := x"00000000";
 	   end case;
 	   
 	   -- get final result	 

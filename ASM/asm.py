@@ -2,25 +2,25 @@ import ctypes
 
 cmdDict = {'nop' : 0, 
            'shl' : 1, 
-		   'shr' : 2,
-		   'xxx' : 3,
-		   'add' : 4,
-		   'adc' : 5,
-		   'sub' : 6,
-		   'sbc' : 7,
-		   'and' : 8,
-		   'or'  : 9,
-		   'not' : 10,
-		   'xor' : 11,
-		   'mfh' : 12, 
-		   'mul' : 15, 
+           'shr' : 2,
+           'mov' : 3,
+           'add' : 4,
+           'adc' : 5,
+           'sub' : 6,
+           'sbc' : 7,
+           'and' : 8,
+           'or'  : 9,
+           'not' : 10,
+           'xor' : 11,
+           'mfh' : 12, 
+           'mul' : 15, 
 		   
-		   'lw'  : 1,
-		   'sw'  : 2,
+           'lw'  : 1,
+           'sw'  : 2,
 		   
-		   'jmp' : 1,  
-		   'hlt' : 2,
-		   'int' : 3}
+           'jmp' : 1,  
+           'hlt' : 2,
+           'int' : 3}
    		   
 def encodeCommand(tokens):
   

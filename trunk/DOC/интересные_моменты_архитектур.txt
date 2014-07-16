@@ -5,3 +5,7 @@ The standard arithmetic operations (e.g., addition and subtraction) do not updat
 The names for these operations have a suffix of ``cc'' to indicate that they update the bits in the condition code register. 
 
 2) jmpl rs , rd | Jumps to [rs] and saves PC to rd | jmpl %r1,%r2
+
+
+свое:
+1) Сделать все команды ALU в 2 клока, перенести мультиплексоры на 2-ую стадию?

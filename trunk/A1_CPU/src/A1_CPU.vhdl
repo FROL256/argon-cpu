@@ -287,8 +287,7 @@ BEGIN
 	-------------- fetch input ----------------	
 	
 	-------------- mem input ----------------
-	variable address : integer := 0;
-	variable memIn   : WORD := x"00000000";    
+	variable address : integer := 0;  
 	-------------- mem input ----------------
 	
 	-------------- alu input and internal ----------------
@@ -329,13 +328,12 @@ BEGIN
 	 rawCmdF := program(ip);
 	 cmdF    := ToInstruction(rawCmdF);
 	 
-	 -- this is the only case for 5-stage RISC processor when we must stall 
+	 -- this is the only case for 5-stage RISC processor when we must stall; no M --> M bypassing, so stall M-->M too 
 	 -- load R0, [R1+2] --> F D X M W	   | bypass after M to X
 	 -- add R3, R0, R1  -->   F F D X M W  |
      -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
 	 --
-	 stall   := (cmdF.itype = INSTR_ALUI) and (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2);
-	 
+	 stall   := (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2);
 	 stall   := stall or ( (cmdF.itype = INSTR_CNTR) and cmdF.code(1 downto 0) = C_HLT); -- and this is specially for hlt command
 	 
 	 if stall or cmdD.imm then -- push nop to cmdD in next cycle, cause if cmdD is immediate, next instructions is it's data
@@ -378,9 +376,6 @@ BEGIN
 	   
 	 end if;
 	 
-	 op1_inputM <= op1_inputX;
-	 op2_inputM <= op2_inputX;
-	 
 	 ---- register fetch ----
 	 
 		 
@@ -395,45 +390,49 @@ BEGIN
 	 
 	 ---- execution stage ----
 	 
-	 if cmdX.itype = INSTR_ALUI then 				
-		
-	   -------------------------- bypassing ----------------------------	 
-	   if    cmdM.reg0 = cmdX.reg1 and cmdM.we then   -- bypass result from X to op1
-	     xA := resultX;
-       elsif cmdW.reg0 = cmdX.reg1 and cmdW.we then   -- bypass result from M to op1
-		 xA := resultM; 
-	   else	
-	     xA := op1_inputX;
-	   end if;
+	 -------------------------- bypassing ----------------------------	 
+	 if    cmdM.reg0 = cmdX.reg1 and cmdM.we then   -- bypass result from X to op1
+	   xA := resultX;
+     elsif cmdW.reg0 = cmdX.reg1 and cmdW.we then   -- bypass result from M to op1
+	   xA := resultM; 
+	 else	
+	   xA := op1_inputX;
+	 end if;
 		 
-	   if    cmdM.reg0 = cmdX.reg2 and not cmdX.imm and cmdM.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
-	     xB := resultX;
-       elsif cmdW.reg0 = cmdX.reg2 and not cmdX.imm and cmdW.we then   -- bypass result from M to op2 and ignore bypassing second op for immediate commands
-		 xB := resultM; 
-	   else	
-	     xB := op2_inputX;
-	   end if;	  
-	   -------------------------- bypassing ----------------------------
-	   
-	   -------------------------- alu core -----------------------------
-	   
-	   ----------------------------------------------------------------- add group
-	   --
-	   if cmdX.code(1) = '1' then  -- sub or sbc  
-	     yB := not xB;
-	   else	 
-	     yB := xB;	   
-	   end if;			 
+	 if    cmdM.reg0 = cmdX.reg2 and not cmdX.imm and cmdM.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
+	   xB := resultX;
+     elsif cmdW.reg0 = cmdX.reg2 and not cmdX.imm and cmdW.we then   -- bypass result from M to op2 and ignore bypassing second op for immediate commands
+	   xB := resultM; 
+	 else	
+	   xB := op2_inputX;
+	 end if;	  
+	 -------------------------- bypassing ----------------------------
+	 
+	 if cmdX.itype = INSTR_MEM then  -- alter second op to compute address if mem istruction occured	
+       xA := "" & cmdX.memOffs;
+	 end if;
+		
+	 ----------------------------------------------------------------- add group
+	 --
+	 if cmdX.code(1) = '1' then  -- sub or sbc  
+	   yB := not xB;
+	 else	 
+	   yB := xB;	   
+	 end if;			 
 	  
-	   carryIn := ToStdLogic(cmdX.code(1 downto 0) = "10" or (cmdX.code(1 downto 0) = "01" and carryOut = '1')); -- SUB or ADC
+	 carryIn := ToStdLogic(cmdX.code(1 downto 0) = "10" or (cmdX.code(1 downto 0) = "01" and carryOut = '1')); -- SUB or ADC
 	   
-	   rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("" & carryIn); -- full 32 bit adder with carry
-	   carryOut <= rAdd(32); 	  
+	 rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("" & carryIn); -- full 32 bit adder with carry
+	 carryOut <= rAdd(32); 	  
 	   
-	   zero := not (rAdd(31) or rAdd(30) or rAdd(29) or rAdd(28) or rAdd(27) or rAdd(26) or rAdd(25) or rAdd(24) or rAdd(23) or rAdd(22) or 
-	                rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
-	                rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
+	 zero := not (rAdd(31) or rAdd(30) or rAdd(29) or rAdd(28) or rAdd(27) or rAdd(26) or rAdd(25) or rAdd(24) or rAdd(23) or rAdd(22) or 
+	              rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
+	              rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
+		
+				  
+	 if cmdX.itype = INSTR_ALUI then 
 	   
+	  
 	   if cmdX.flags.CC then
 	   	 flags_Z  <= (zero = '0');
 		 flags_LE <= (rAdd(31) = '1') or (zero = '0');
@@ -501,30 +500,21 @@ BEGIN
 	   resultX <= x"00000000";	 
      end if;
 	 
+	 op1_inputM <= op1_inputX;
+	 op2_inputM <= std_logic_vector(rAdd(31 downto 0));	-- calc address inside alu as R2 + offset
+	 
 	 ---- execution stage ----
 	 
 	 
-	 ---- memory stage ----
+	 ---- memory stage ----	                             no bypassing from M to M
 	
 	 if cmdM.itype = INSTR_MEM then 		
 		 
-       if cmdW.reg0 = cmdM.reg2 and cmdW.we then -- bypass result from M to address	
-	     address := to_uint(resultM);
-	   else	
-	     address := to_uint(op2_inputM);
-	   end if;
-	   
-	   address := address + to_uint(cmdM.memOffs);
-	   
-	   if cmdW.reg0 = cmdM.reg1 and cmdW.we then -- bypass result from M to data
-		 memIn := resultM;		 
-	   else
-	     memIn := op1_inputM; 
-	   end if;
+	   address := to_uint(op2_inputM);	   
 	   
 	   case cmdM.code(1 downto 0) is
 	     when M_LOAD  =>   resultM         <= memory(address);   
-	     when M_STORE =>   memory(address) <= memIn; 
+	     when M_STORE =>   memory(address) <= op1_inputM; 
 		   				   resultM         <= x"00000000";
          when others  =>   resultM         <= x"00000000"; 
        end case;

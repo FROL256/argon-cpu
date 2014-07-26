@@ -51,7 +51,7 @@ package A0 is
     Z  : boolean; -- Zero
     LT : boolean; -- Less Than
     LE : boolean; -- Less Equal	
-	CC : boolean; -- if command set flags
+	SF : boolean; -- if command set flags
     S  : boolean; -- if operation is signed
   end record;				  
   
@@ -136,7 +136,7 @@ package body A0 is
 	
 	if cmd.itype = INSTR_ALUI then                            -- don't use memOffs, read flags instead
       cmd.flags.S  := ToBoolean(cmd.memOffs(7)); 
-	  cmd.flags.CC := ToBoolean(cmd.memOffs(6));
+	  cmd.flags.SF := ToBoolean(cmd.memOffs(6));
 	end if;
 	
 	cmd.invalid  := false;	
@@ -304,7 +304,8 @@ BEGIN
 	variable carryIn : std_logic := '0'; 
 	variable zero    : std_logic := '0'; 
 	
-	variable shiftS  : std_logic := '0'; 
+	variable shiftS   : std_logic := '0';   
+	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -408,19 +409,21 @@ BEGIN
 	 end if;	  
 	 -------------------------- bypassing ----------------------------
 	 
-	 if cmdX.itype = INSTR_MEM then  -- alter second op to compute address if mem istruction occured	
-       xA := "" & cmdX.memOffs;
+	 memInAlu := (cmdX.itype = INSTR_MEM);
+	 
+	 if memInAlu then  -- alter second op to compute address if mem istruction occured	
+       xA := x"000000" & cmdX.memOffs(7 downto 0);
 	 end if;
 		
 	 ----------------------------------------------------------------- add group
 	 --
-	 if cmdX.code(1) = '1' then  -- sub or sbc  
+	 if cmdX.code(1) = '1' and not memInAlu then  -- sub or sbc  
 	   yB := not xB;
 	 else	 
 	   yB := xB;	   
 	 end if;			 
 	  
-	 carryIn := ToStdLogic(cmdX.code(1 downto 0) = "10" or (cmdX.code(1 downto 0) = "01" and carryOut = '1')); -- SUB or ADC
+	 carryIn := ToStdLogic( ((cmdX.code(1 downto 0) = "10") or (cmdX.code(1 downto 0) = "01" and carryOut = '1')) and not memInAlu); -- SUB or ADC and not mem operation
 	   
 	 rAdd := unsigned("0" & xA) + unsigned(yB) + unsigned("" & carryIn); -- full 32 bit adder with carry
 	 carryOut <= rAdd(32); 	  
@@ -431,9 +434,8 @@ BEGIN
 		
 				  
 	 if cmdX.itype = INSTR_ALUI then 
-	   
-	  
-	   if cmdX.flags.CC then
+	    
+	   if cmdX.flags.SF then
 	   	 flags_Z  <= (zero = '0');
 		 flags_LE <= (rAdd(31) = '1') or (zero = '0');
 		 flags_LT <= (rAdd(31) = '1');  -- sign bit
@@ -481,7 +483,7 @@ BEGIN
 			 			  rShift(31) := shiftS;
 			  			end if;	 
 		 when "10"   => rShift := shiftS & xA(31 downto 1);	 -- replace with srl
-		 when "11"   => rShift := xA;
+		 when "11"   => rShift := xB;
 		 when others => rShift := x"00000000";
 	   end case;
 	   
@@ -501,7 +503,7 @@ BEGIN
      end if;
 	 
 	 op1_inputM <= op1_inputX;
-	 op2_inputM <= std_logic_vector(rAdd(31 downto 0));	-- calc address inside alu as R2 + offset
+	 op2_inputM <= std_logic_vector(rAdd(31 downto 0));
 	 
 	 ---- execution stage ----
 	 

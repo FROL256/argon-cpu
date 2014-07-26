@@ -71,16 +71,33 @@ def encodeCommand(tokens):
   bits |= (r2 << 12)
   
   if len(tokens) < 8: return bits
-  ## //////////////////////////////////////////////////////////////////////////////////  mem offset
-
-  memOffs = int(tokens[7])
-  if memOffs <= 255:
-    bits |= (memOffs << 4)
+  ## //////////////////////////////////////////////////////////////////////////////////  mem offset, alu specific and cond flags
   
-  if len(tokens) < 10: return bits
+  cond = ''
+  if tokens[2] == 'a': 
+    signedFlag   = 0
+    setFlagsFlag = 0
+    if tokens[7] == 's': 
+      signedFlag = 1
+    if len(tokens) >= 9:
+      if tokens[8] == 'sf':
+        setFlagsFlag = 1
+	
+    bits |= (signedFlag << 11)
+    bits |= (setFlagsFlag << 10)
+	
+    if len(tokens) < 11: return bits
+    cond = tokens[10]
+	
+  else:
+    memOffs = int(tokens[7])
+    if memOffs <= 255:
+      bits |= (memOffs << 4)
+  
+    if len(tokens) < 10: return bits
+    cond = tokens[9]
+	  
   ## //////////////////////////////////////////////////////////////////////////////////  flags
-  
-  cond = tokens[9]
   
   # N,Z,LT,LE
   flags = 0
@@ -172,8 +189,8 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
 
-path = "progs\\02_add_sint32_neg.asm"
-  
+path = "progs\\01_bypass_X_to_X.asm"
+ 
 mainVHDL(path, "out.vhdl") 
 main(path, "out.txt", True)   
 print "Ok"

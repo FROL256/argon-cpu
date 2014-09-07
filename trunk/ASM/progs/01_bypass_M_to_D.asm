@@ -6,6 +6,8 @@ r, 1, a, add, R3, R1, R2
 r, 0, a, nop
 r, 0, a, nop
 r, 1, a, add, R0, R3, R2
+r, 1, a, xor, R1, R1, R1
+r, 1, a, xor, R2, R2, R2 
 r, 0, c, hlt
 r, 0, c, hlt
 r, 0, c, hlt

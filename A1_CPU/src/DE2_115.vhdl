@@ -44,23 +44,6 @@ package body UTILS is
   begin
     return ieee.std_logic_1164.STD_LOGIC_VECTOR(ieee.numeric_std.to_signed(number,32));
   end to_word;
-
-  --impure function InitRamFromFile (Init_Ram_File : in string ) return Init_Memory is
-
-  --FILE ram_file      : text is in Init_Ram_File;
-  --variable line_ram  : line;
-  --variable ram       : Init_Memory;
-
-  --begin
-  --
-  --  for i in Init_Memory'range loop
-  --    readline (ram_file, line_ram);
-  --    read     (line_ram, ram(i));
-  --  end loop;
-  --
-  --  return ram;
-  --  
-  --end function;
    
 end UTILS;
 

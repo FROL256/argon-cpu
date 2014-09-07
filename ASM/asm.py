@@ -1,4 +1,5 @@
 import ctypes
+import sys
 
 cmdDict = {'nop' : 0, 
            'shl' : 1, 
@@ -189,8 +190,18 @@ def mainVHDL(inFileName, outFileName):
   f.close()  
   o.close()  
 
-path = "progs\\01_bypass_X_to_X.asm"
- 
-mainVHDL(path, "out.vhdl") 
-main(path, "out.txt", True)   
-print "Ok"
+''' BEGIN MAIN PROGRAM '''  
+  
+if len(sys.argv) > 1:
+
+  path    = sys.argv[1]
+  outPath = sys.argv[2]
+  main(path, outPath, True)
+
+else:
+
+  path = "progs\\01_bypass_X_to_X.asm"
+  mainVHDL(path, "out.vhdl") 
+  main(path, "out.txt", True)   
+  
+print path + "\t--> Ok"

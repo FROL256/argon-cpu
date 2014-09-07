@@ -14,6 +14,8 @@ package A0 is
   type PROGRAM_MEMORY   is array (0 to 16384) of WORD; 
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
+  
+  type string2 is array (0 to 1) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -51,7 +53,7 @@ package A0 is
     Z  : boolean; -- Zero
     LT : boolean; -- Less Than
     LE : boolean; -- Less Equal	
-	SF : boolean; -- if command set flags
+	CF : boolean; -- if command set flags
     S  : boolean; -- if operation is signed
   end record;				  
   
@@ -136,7 +138,7 @@ package body A0 is
 	
 	if cmd.itype = INSTR_ALUI then                            -- don't use memOffs, read flags instead
       cmd.flags.S  := ToBoolean(cmd.memOffs(7)); 
-	  cmd.flags.SF := ToBoolean(cmd.memOffs(6));
+	  cmd.flags.CF := ToBoolean(cmd.memOffs(6));
 	end if;
 	
 	cmd.invalid  := false;	
@@ -183,7 +185,8 @@ USE ieee.numeric_std.all;
 
 USE work.DE2_115.all;
 USE work.UTILS.all;
-USE work.A0.all;
+USE work.A0.all;	  
+USE work.ATESTS.all;
 
 use STD.textio.all;				   -- for reading files
 use ieee.std_logic_textio.all;	   -- for reading files
@@ -235,28 +238,33 @@ ARCHITECTURE RTL OF A1_CPU IS
   
 BEGIN	
   
-  ------------------------------------ this is only for simulation purposes ------------------------------------
+  ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process  
     file    file_PROG : text; -- file there the program is located 
     variable v_ILINE  : line;  
     variable v_CMD    : WORD; 
-	variable i        : integer := 0;
+	variable i        : integer := 0; 
+	variable testId   : integer := 0;  
+	
+	constant binFiles : string2 := (0 => "../../ASM/bin/out001.txt", 
+	                                1 => "../../ASM/bin/out002.txt");
+	
   begin		  
 	  
+   for testId in 0 to 1 loop
+	    
    clk <= '0';
    rst <= '0';
    
    ------------------------------------ read program from file -------------------------------------------------
-   file_open(file_PROG, "../../ASM/out.txt",  read_mode);
+   file_open(file_PROG, binFiles(testId), read_mode); 
+   --file_open(file_PROG, "../../ASM/out000.txt", read_mode);  -- for debug individual file
    
    while not endfile(file_PROG) loop   
-	   
      readline(file_PROG, v_ILINE); 
      read(v_ILINE, v_CMD);
-	 
 	 program(i) <= v_CMD;
    	 i := i+1;		
-		
    end loop;
    
    file_close(file_PROG);
@@ -268,13 +276,24 @@ BEGIN
    rst <= '0';
    wait for 10 ns;
    
-   while true loop	   
+   i := 0;
+   while i < 200 loop	   
      wait for 10 ns; 
      clk  <= not clk;
+	 i := i+1;
+   end loop;	 
+   
+   if CheckTest(testId, to_sint(regs(0)), to_sint(regs(1)), to_sint(regs(2))) then
+     report "TEST " & integer'image(testId) & " PASSED!";
+   else
+     report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = "	& integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
+   end if;
+   
    end loop;
    
   end process clock;
   ------------------------------------ this is only for simulation purposes ------------------------------------
+	  
 	  
 	  
   
@@ -435,7 +454,7 @@ BEGIN
 				  
 	 if cmdX.itype = INSTR_ALUI then 
 	    
-	   if cmdX.flags.SF then
+	   if cmdX.flags.CF then
 	   	 flags_Z  <= (zero = '0');
 		 flags_LE <= (rAdd(31) = '1') or (zero = '0');
 		 flags_LT <= (rAdd(31) = '1');  -- sign bit

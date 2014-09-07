@@ -1,7 +1,7 @@
 i, 1, a, mov, R1, R0 
-di, 3
+di, 4
 i, 1, a, mov, R2, R0
-di, 2
+di, 5
 r, 0, m, sw,  R0, R1, R2, 255  
 r, 1, m, lw,  R4, R0, R2, 255   
 r, 0, a, nop

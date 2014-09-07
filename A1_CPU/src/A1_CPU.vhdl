@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type string2 is array (0 to 1) of string(1 to 24);
+  type testtype is array (1 to 9) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -214,7 +214,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal cmdW : Instruction := CMD_NOP;
   
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
-  signal memory   : L1_MEMORY       := (others => x"00000000");  -- in real implementation this should be out of chip
+  signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
   --signal mem_offs : std_logic_vector(7 downto 0); 
@@ -239,27 +239,37 @@ ARCHITECTURE RTL OF A1_CPU IS
 BEGIN	
   
   ------------------------------------ this process is only for simulation purposes ------------------------------------
-  clock : process  
+  clock : process  	
+  
     file    file_PROG : text; -- file there the program is located 
     variable v_ILINE  : line;  
     variable v_CMD    : WORD; 
 	variable i        : integer := 0; 
 	variable testId   : integer := 0;  
 	
-	constant binFiles : string2 := (0 => "../../ASM/bin/out001.txt", 
-	                                1 => "../../ASM/bin/out002.txt");
+	constant binFiles : testtype := (1 => "../../ASM/bin/out001.txt", 
+	                                 2 => "../../ASM/bin/out002.txt",
+	  								 3 => "../../ASM/bin/out003.txt",
+									 4 => "../../ASM/bin/out004.txt",	
+									 5 => "../../ASM/bin/out005.txt",
+									 6 => "../../ASM/bin/out006.txt",
+									 7 => "../../ASM/bin/out007.txt",
+									 8 => "../../ASM/bin/out008.txt",
+									 9 => "../../ASM/bin/out009.txt"
+									 );
 	
   begin		  
 	  
-   for testId in 0 to 1 loop
+   for testId in binFiles'low to binFiles'high loop
 	    
    clk <= '0';
    rst <= '0';
    
    ------------------------------------ read program from file -------------------------------------------------
    file_open(file_PROG, binFiles(testId), read_mode); 
-   --file_open(file_PROG, "../../ASM/out000.txt", read_mode);  -- for debug individual file
+   --file_open(file_PROG, "../../ASM/bin/out002.txt", read_mode);  -- for debug individual file
    
+   i := 0;
    while not endfile(file_PROG) loop   
      readline(file_PROG, v_ILINE); 
      read(v_ILINE, v_CMD);
@@ -277,7 +287,7 @@ BEGIN
    wait for 10 ns;
    
    i := 0;
-   while i < 200 loop	   
+   while i < TestClocks(testId) loop	   
      wait for 10 ns; 
      clk  <= not clk;
 	 i := i+1;
@@ -289,7 +299,9 @@ BEGIN
      report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = "	& integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
    end if;
    
-   end loop;
+   end loop; 
+   
+   report "end of simulation" severity failure;
    
   end process clock;
   ------------------------------------ this is only for simulation purposes ------------------------------------

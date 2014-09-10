@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 9) of string(1 to 24);
+  type testtype is array (1 to 10) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -247,15 +247,16 @@ BEGIN
 	variable i        : integer := 0; 
 	variable testId   : integer := 0;  
 	
-	constant binFiles : testtype := (1 => "../../ASM/bin/out001.txt", 
-	                                 2 => "../../ASM/bin/out002.txt",
-	  								 3 => "../../ASM/bin/out003.txt",
-									 4 => "../../ASM/bin/out004.txt",	
-									 5 => "../../ASM/bin/out005.txt",
-									 6 => "../../ASM/bin/out006.txt",
-									 7 => "../../ASM/bin/out007.txt",
-									 8 => "../../ASM/bin/out008.txt",
-									 9 => "../../ASM/bin/out009.txt"
+	constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
+	                                 2  => "../../ASM/bin/out002.txt",
+	  								 3  => "../../ASM/bin/out003.txt",
+									 4  => "../../ASM/bin/out004.txt",	
+									 5  => "../../ASM/bin/out005.txt",
+									 6  => "../../ASM/bin/out006.txt",
+									 7  => "../../ASM/bin/out007.txt",
+									 8  => "../../ASM/bin/out008.txt",
+									 9  => "../../ASM/bin/out009.txt",
+									 10 => "../../ASM/bin/out010.txt"
 									 );
 	
   begin		  

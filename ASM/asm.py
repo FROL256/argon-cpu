@@ -198,10 +198,12 @@ if len(sys.argv) > 1:
   outPath = sys.argv[2]
   main(path, outPath, True)
 
+  print path + "\t--> " + outPath 
+  
 else:
 
   path = "progs\\01_bypass_X_to_X.asm"
   mainVHDL(path, "out.vhdl") 
   main(path, "out.txt", True)   
   
-print path + "\t--> Ok"
+  print path + "\t--> Ok"

@@ -7,7 +7,7 @@ vcom -2002 a1_cpu.vhdl de2_115.vhdl
 asim -relax -O5 +access +r +m+A1_CPU A1_CPU RTL
 
 clear -log
-run 5000 ns			
+run 6000 ns			
 
 # Quit the simulation
 endsim

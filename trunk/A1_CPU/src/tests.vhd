@@ -39,6 +39,7 @@ package body ATESTS is
 	  when 7      => return ((R0 = 20) and (R1 = 6) and (R2 = 7));
 	  when 8      => return ((R0 = 1) and (R1 = -5) and (R2 = 0)); -- not sure about this test	
 	  when 9      => return ((R0 = 1) and (R1 = 4) and (R2 = 0));  -- not sure about this test
+	  when 10     => return ((R0 = 2) and (R1 = 271) and (R2 = 255));	 
 	  
       when others => return false;
 		

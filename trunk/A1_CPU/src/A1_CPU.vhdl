@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 10) of string(1 to 24);
+  type testtype is array (1 to 12) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -256,7 +256,9 @@ BEGIN
 									 7  => "../../ASM/bin/out007.txt",
 									 8  => "../../ASM/bin/out008.txt",
 									 9  => "../../ASM/bin/out009.txt",
-									 10 => "../../ASM/bin/out010.txt"
+									 10 => "../../ASM/bin/out010.txt",
+									 11 => "../../ASM/bin/out011.txt",
+									 12 => "../../ASM/bin/out012.txt"
 									 );
 	
   begin		  
@@ -479,10 +481,10 @@ BEGIN
 	   
 	   ----------------------------------------------------------------- mul group	(may be need to optimize, may be not)
       
-	   if cmdX.flags.S then   
-	     rMul := unsigned(xA) * unsigned(xB);		      -- full 32 to 64 bit signed/unsigned multiplyer;
+	   if cmdX.flags.S then 
+		 rMul := unsigned(signed(xA) * signed(xB));
 	   else
-		 rMul := unsigned(signed(xA) * signed(xB));	
+		 rMul := unsigned(xA) * unsigned(xB);		      -- full 32 to 64 bit signed/unsigned multiplyer;	
 	   end if;
 	   
 	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it

@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 12) of string(1 to 24);
+  type testtype is array (1 to 13) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -258,7 +258,8 @@ BEGIN
 									 9  => "../../ASM/bin/out009.txt",
 									 10 => "../../ASM/bin/out010.txt",
 									 11 => "../../ASM/bin/out011.txt",
-									 12 => "../../ASM/bin/out012.txt"
+									 12 => "../../ASM/bin/out012.txt",
+									 13 => "../../ASM/bin/out013.txt"
 									 );
 	
   begin		  

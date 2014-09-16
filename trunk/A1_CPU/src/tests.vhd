@@ -43,6 +43,7 @@ package body ATESTS is
 	  when 11     => return ((R0 = 9) and (R1 = 9) and (R2 = 48));	
 	  when 12     => return ((R0 = 32) and (R1 = -32) and (R2 = 16));
 	  when 13     => return ((R0 = 2) and (R1 = -1) and (R2 = 0));
+	  when 14     => return ((R0 = 16) and (R1 = 16) and (R2 = 20));
       when others => return false;
 		
     end case;

@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 13) of string(1 to 24);
+  type testtype is array (1 to 14) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -99,16 +99,16 @@ package A0 is
   
   --
   type Instruction is record
-	imm     : boolean;										  
+	imm     : boolean;						 -- immediate flag				  
 	we      : boolean;                       -- write enable
 	itype   : STD_LOGIC_VECTOR (1 downto 0); -- instruction type  
-    code    : STD_LOGIC_VECTOR (3 downto 0);	
+    code    : STD_LOGIC_VECTOR (3 downto 0); -- instruction op-code	
     reg0    : REGT;
     reg1    : REGT;
     reg2    : REGT;	  
 	memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions 
-	flags   : Flags; 
-	invalid : boolean; 
+	flags   : Flags; 						 -- predicates
+	invalid : boolean; 						 -- used later if instruction marked invalid due to predicates or cache miss
   end record;			   
   
   constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => false), invalid => false);
@@ -221,6 +221,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal op1_inputX  : WORD := x"00000000";
   signal op2_inputX  : WORD := x"00000000"; 
+  signal imm_value   : WORD := x"00000000";
   
   signal op1_inputM  : WORD := x"00000000";
   signal op2_inputM  : WORD := x"00000000";
@@ -259,7 +260,8 @@ BEGIN
 									 10 => "../../ASM/bin/out010.txt",
 									 11 => "../../ASM/bin/out011.txt",
 									 12 => "../../ASM/bin/out012.txt",
-									 13 => "../../ASM/bin/out013.txt"
+									 13 => "../../ASM/bin/out013.txt",
+									 14 => "../../ASM/bin/out014.txt"
 									 );
 	
   begin		  
@@ -364,7 +366,7 @@ BEGIN
 	 rawCmdF := program(ip);
 	 cmdF    := ToInstruction(rawCmdF);
 	 
-	 -- this is the only case for 5-stage RISC processor when we must stall; no M --> M bypassing, so stall M-->M too 
+	 -- this is the only case for 5-stage RISC processor when we must stall, because Mem operations have 2 clock latency
 	 -- load R0, [R1+2] --> F D X M W	   | bypass after M to X
 	 -- add R3, R0, R1  -->   F F D X M W  |
      -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
@@ -398,8 +400,10 @@ BEGIN
 	   op1_inputX <= regs(cmdD.reg1);			   -- ok, read from register file
      end if; 
 	 
+	 imm_value    <= rawCmdF;
+	 
 	 if cmdD.imm then		   					     -- read from instruction memory and ignore bypassing if commad is immediate
-	   op2_inputX <= rawCmdF;
+	   op2_inputX <= rawCmdF;	
 	 else 		  
 		 
 	   if cmdM.reg0 = cmdD.reg2 and cmdM.we then     -- bypass result from X to op2
@@ -408,7 +412,7 @@ BEGIN
 	     op2_inputX <= resultM;
        else 
 	     op2_inputX <= regs(cmdD.reg2);              -- ok, read from register file
-	   end if; 
+	   end if; 	  
 	   
 	 end if;
 	 
@@ -447,7 +451,13 @@ BEGIN
 	 memInAlu := (cmdX.itype = INSTR_MEM);
 	 
 	 if memInAlu then  -- alter second op to compute address if mem istruction occured	
-       xA := x"000000" & cmdX.memOffs(7 downto 0);
+       
+	   if cmdX.imm then	
+		 xA := imm_value;
+	   else
+	     xA := x"000000" & cmdX.memOffs(7 downto 0);
+	   end if;
+	   
 	 end if;
 		
 	 ----------------------------------------------------------------- add group

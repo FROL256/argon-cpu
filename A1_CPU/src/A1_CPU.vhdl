@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 14) of string(1 to 24);
+  type testtype is array (1 to 15) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -115,7 +115,8 @@ package A0 is
   
   function ToInstruction(data : WORD) return Instruction; 
   function ToStdLogic(L: BOOLEAN) return std_logic;	
-  function ToBoolean(L: std_logic) return BOOLEAN;
+  function ToBoolean(L: std_logic) return BOOLEAN; 
+  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_LE : boolean) return boolean;
   
 end A0;
 
@@ -168,7 +169,39 @@ package body A0 is
      else
       return false;
     end if;
-  end ToBoolean; 	 
+  end ToBoolean; 
+  
+  
+  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_LE : boolean) return boolean is
+  
+    variable cmdFlagEQ : boolean:= false; 
+	variable cmdFlagLE : boolean:= false;
+	variable cmdFlagLT : boolean:= false;  
+	
+    variable valid : boolean := false;
+	
+  begin	   
+	  
+	  if cmdxflags.N then
+	    cmdFlagEQ := not cmdxflags.Z; 
+	    cmdFlagLE := not cmdxflags.LE;
+	    cmdFlagLT := not cmdxflags.LT;
+	  else
+		cmdFlagEQ := cmdxflags.Z; 
+	    cmdFlagLE := cmdxflags.LE;
+	    cmdFlagLT := cmdxflags.LT;  
+	  end if;
+	  
+	  if flags_Z then
+	    valid := (cmdFlagEQ or cmdFlagLE) and (cmdFlagLT = flags_LT);
+	  else
+		valid := (cmdFlagEQ = flags_Z) and (cmdFlagLT = flags_LT) and (cmdFlagLE = flags_LE);  
+	  end if;
+	  
+	  return not valid;
+	  
+  end InvalidateCmdIfFlagsDifferent;
+  
   
 end A0;
 
@@ -261,7 +294,8 @@ BEGIN
 									 11 => "../../ASM/bin/out011.txt",
 									 12 => "../../ASM/bin/out012.txt",
 									 13 => "../../ASM/bin/out013.txt",
-									 14 => "../../ASM/bin/out014.txt"
+									 14 => "../../ASM/bin/out014.txt",
+									 15 => "../../ASM/bin/out015.txt"
 									 );
 	
   begin		  
@@ -342,7 +376,9 @@ BEGIN
 	variable zero    : std_logic := '0'; 
 	
 	variable shiftS   : std_logic := '0';   
-	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address
+	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address		 
+		
+	variable invalidateNow : boolean := false;
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -384,7 +420,14 @@ BEGIN
 	 -- F D X M W
 	 --
 	 cmdX <= cmdD; -- from D to X
-	 cmdM <= cmdX; -- from X to M
+	 cmdM <= cmdX; -- from X to M	 -- here we have to deal with flags values and predicate commands
+	 
+	 if cmdX.flags.N or cmdX.flags.Z or cmdX.flags.LT or cmdX.flags.LE then	  	 
+       invalidateNow := InvalidateCmdIfFlagsDifferent(cmdX.flags, flags_Z, flags_LT, flags_LE);
+	   cmdM.invalid <= invalidateNow;
+	   cmdM.we      <= cmdX.we and not invalidateNow; -- disable write to reg file if command is invalid
+	 end if;
+	 
 	 cmdW <= cmdM; -- from M to W
 	 
 	 ---- instruction fetch and pipeline basics ----   
@@ -481,8 +524,8 @@ BEGIN
 	 if cmdX.itype = INSTR_ALUI then 
 	    
 	   if cmdX.flags.CF then
-	   	 flags_Z  <= (zero = '0');
-		 flags_LE <= (rAdd(31) = '1') or (zero = '0');
+	   	 flags_Z  <= (zero     = '1');
+		 flags_LE <= (rAdd(31) = '1') or (zero = '1'); 
 		 flags_LT <= (rAdd(31) = '1');  -- sign bit
 	   else
 	     flags_Z  <= flags_Z;
@@ -555,7 +598,7 @@ BEGIN
 	 
 	 ---- memory stage ----	                             no bypassing from M to M
 	
-	 if cmdM.itype = INSTR_MEM then 		
+	 if cmdM.itype = INSTR_MEM and not cmdM.invalid then 		
 		 
 	   address := to_uint(op2_inputM);	   
 	   

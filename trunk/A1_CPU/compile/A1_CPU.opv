@@ -1,0 +1,1 @@
+ -erf "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU\compile\A1_CPU.erf" -work A1_CPU -lc d:/PROG/FPGA2/A0_CPU_SVN/trunk/library.cfg -fl d:/PROG/FPGA2/A0_CPU_SVN/trunk/A1_CPU/projlib.cfg -o d:/PROG/FPGA2/A0_CPU_SVN/trunk/A1_CPU/compile -l "A1_CPU"   -O2 -v2k 

@@ -1,0 +1,1 @@
+ -u "C:\Aldec\Active-HDL 9.1\bin/systf.dll" "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU\src\comp_eq.v"  -cs  -g 5  -r -li "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU\compile\A1_CPU.epr" -p "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU" 

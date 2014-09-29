@@ -1,0 +1,1 @@
+-w -s "d:\PROG\FPGA2\A0_CPU_SVN\trunk\library.cfg"  -j "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU\projlib.cfg"  -d "d:\PROG\FPGA2\A0_CPU_SVN\trunk\A1_CPU\compile"   -work a1_cpu  -dbg -e 100 -2002 "a1_cpu.vhdl" "de2_115.vhdl"

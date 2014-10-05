@@ -100,7 +100,7 @@ def encodeCommand(tokens):
 	  
   ## //////////////////////////////////////////////////////////////////////////////////  flags
   
-  # N,Z,LT,LE
+  # N,Z,LT,LE,P
   flags = 0
   
   if cond == 'z' or cond == 'eq':
@@ -109,14 +109,20 @@ def encodeCommand(tokens):
     flags = 8+4	
   elif cond == 'lt':
     flags = 2
-  elif cond == 'gt':
-    flags = 8+1
-  elif cond == 'ge':
-    flags = 8+2
   elif cond == 'le':
-    flags = 1
+    flags = 4+2
+  elif cond == 'gt':
+    flags = 8+2
+  elif cond == 'ge': # ge is impossible to encode unfortunately
+    flags = 0
   
   bits |= flags
+  
+  if len(tokens) < 11: return bits
+  cond = tokens[10]
+  
+  if cond == 'p':
+    bits |= 1 # last 'predicate' flag
   
   return bits
 

@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 15) of string(1 to 24);
+  type testtype is array (1 to 16) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -49,10 +49,10 @@ package A0 is
   						
   
   type Flags is record		 
-	N  : boolean; -- apply not to the rest of flags
+	N  : boolean; -- if set, invert flags (Z,LT,P)
     Z  : boolean; -- Zero
     LT : boolean; -- Less Than
-    LE : boolean; -- Less Equal	
+    P  : boolean; -- Predicate	
 	CF : boolean; -- if command set flags
     S  : boolean; -- if operation is signed
   end record;				  
@@ -116,7 +116,7 @@ package A0 is
   function ToInstruction(data : WORD) return Instruction; 
   function ToStdLogic(L: BOOLEAN) return std_logic;	
   function ToBoolean(L: std_logic) return BOOLEAN; 
-  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_LE : boolean) return boolean;
+  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
 end A0;
 
@@ -145,8 +145,8 @@ package body A0 is
 	cmd.invalid  := false;	
 	cmd.flags.N  := ToBoolean(data(3));						  -- last 4 bits for flags
 	cmd.flags.Z  := ToBoolean(data(2));
-	cmd.flags.LE := ToBoolean(data(1));
-	cmd.flags.LT := ToBoolean(data(0)); 
+	cmd.flags.LT := ToBoolean(data(1));
+	cmd.flags.P  := ToBoolean(data(0));
 	
     return cmd;	  
 	
@@ -172,11 +172,11 @@ package body A0 is
   end ToBoolean; 
   
   
-  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_LE : boolean) return boolean is
+  function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean is
   
     variable cmdFlagEQ : boolean:= false; 
-	variable cmdFlagLE : boolean:= false;
-	variable cmdFlagLT : boolean:= false;  
+	variable cmdFlagLT : boolean:= false;
+	variable cmdFlagP  : boolean:= false;
 	
     variable valid : boolean := false;
 	
@@ -184,18 +184,18 @@ package body A0 is
 	  
 	  if cmdxflags.N then
 	    cmdFlagEQ := not cmdxflags.Z; 
-	    cmdFlagLE := not cmdxflags.LE;
-	    cmdFlagLT := not cmdxflags.LT;
+	    cmdFlagLT := not cmdxflags.LT; 
+		cmdFlagP  := not cmdxflags.P;
 	  else
 		cmdFlagEQ := cmdxflags.Z; 
-	    cmdFlagLE := cmdxflags.LE;
-	    cmdFlagLT := cmdxflags.LT;  
+	    cmdFlagLT := cmdxflags.LT; 
+		cmdFlagP  := cmdxflags.P;
 	  end if;
 	  
 	  if flags_Z then
-	    valid := (cmdFlagEQ or cmdFlagLE) and (cmdFlagLT = flags_LT);
+	    valid := cmdFlagEQ;
 	  else
-		valid := (cmdFlagEQ = flags_Z) and (cmdFlagLT = flags_LT) and (cmdFlagLE = flags_LE);  
+		valid := (cmdFlagLT = flags_LT);  
 	  end if;
 	  
 	  return not valid;
@@ -264,7 +264,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal flags_Z  : boolean := false; -- Zero
   signal flags_LT : boolean := false; -- Less Than
-  signal flags_LE : boolean := false; -- Less Equal	
+  signal flags_P  : boolean := false; -- Less Equal	
   
   signal carryOut    : std_logic := '0';  
   signal highValue   : WORD := x"00000000";	  
@@ -295,7 +295,8 @@ BEGIN
 									 12 => "../../ASM/bin/out012.txt",
 									 13 => "../../ASM/bin/out013.txt",
 									 14 => "../../ASM/bin/out014.txt",
-									 15 => "../../ASM/bin/out015.txt"
+									 15 => "../../ASM/bin/out015.txt",
+									 16 => "../../ASM/bin/out016.txt"
 									 );
 	
   begin		  
@@ -422,8 +423,8 @@ BEGIN
 	 cmdX <= cmdD; -- from D to X
 	 cmdM <= cmdX; -- from X to M	 -- here we have to deal with flags values and predicate commands
 	 
-	 if cmdX.flags.N or cmdX.flags.Z or cmdX.flags.LT or cmdX.flags.LE then	  	 
-       invalidateNow := InvalidateCmdIfFlagsDifferent(cmdX.flags, flags_Z, flags_LT, flags_LE);
+	 if cmdX.flags.N or cmdX.flags.Z or cmdX.flags.LT or cmdX.flags.P then	  	 
+       invalidateNow := InvalidateCmdIfFlagsDifferent(cmdX.flags, flags_Z, flags_LT, flags_P);
 	   cmdM.invalid <= invalidateNow;
 	   cmdM.we      <= cmdX.we and not invalidateNow; -- disable write to reg file if command is invalid
 	 end if;
@@ -525,11 +526,9 @@ BEGIN
 	    
 	   if cmdX.flags.CF then
 	   	 flags_Z  <= (zero     = '1');
-		 flags_LE <= (rAdd(31) = '1') or (zero = '1'); 
 		 flags_LT <= (rAdd(31) = '1');  -- sign bit
 	   else
 	     flags_Z  <= flags_Z;
-		 flags_LE <= flags_LE;
 		 flags_LT <= flags_LT;
 	   end if;
 	   

@@ -1,4 +1,4 @@
-27745
+28827
 ~E 1 "./src/A1_CPU.vhdl" 154 A0_ALU
 ~A 1 "./src/A1_CPU.vhdl" 169 ALU_RTL
 ~A 1 "./src/A1_CPU.vhdl" 257 rtl
@@ -6,7 +6,7 @@
 ~A 1 "./src/A1_CPU.vhdl" 473 RTL
 ~E 1 "./src/A1_CPU.vhdl" 340 A0_MEMORY_UNIT
 ~A 1 "./src/A1_CPU.vhdl" 361 RTL
-~E 1 "./src/A1_CPU.vhdl" 194 A1_CPU
+~E 1 "./src/a1_cpu.vhdl" 227 A1_CPU
 ~A 1 "./src/a1_cpu.vhdl" 234 RTL
-~E 1 "./src/DE2_115.vhdl" 127 Number_Display
+~E 1 "./src/de2_115.vhdl" 110 Number_Display
 ~A 1 "./src/de2_115.vhdl" 126 RTL

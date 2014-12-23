@@ -297,7 +297,7 @@ BEGIN
 									 14 => "../ASM/bin/out014.txt",
 									 15 => "../ASM/bin/out015.txt",
 									 16 => "../ASM/bin/out016.txt",
-									 17 => "../ASM/bin/out016.txt"
+									 17 => "../ASM/bin/out017.txt"
 									 );
 	
   begin		  

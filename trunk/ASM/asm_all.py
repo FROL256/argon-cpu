@@ -1,7 +1,7 @@
 import os
 
-os.system("asm.py progs/05_cond_minmax2.asm bin/out001.txt")
-#os.system("asm.py progs/00_add_numbers.asm bin/out001.txt")
+#os.system("asm.py progs/05_cond_minmax2.asm bin/out001.txt")
+os.system("asm.py progs/00_add_numbers.asm bin/out001.txt")
 os.system("asm.py progs/00_load_store.asm  bin/out002.txt")
 os.system("asm.py progs/01_bypass_D_to_X.asm bin/out003.txt")
 os.system("asm.py progs/01_bypass_M_to_D.asm bin/out004.txt")

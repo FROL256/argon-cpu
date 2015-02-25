@@ -1,6 +1,6 @@
 import os
 
-#os.system("asm.py progs/05_cond_minmax2.asm bin/out001.txt")
+#os.system("asm.py progs/06_cond_load_store.asm bin/out001.txt")
 os.system("asm.py progs/00_add_numbers.asm bin/out001.txt")
 os.system("asm.py progs/00_load_store.asm  bin/out002.txt")
 os.system("asm.py progs/01_bypass_D_to_X.asm bin/out003.txt")
@@ -18,3 +18,4 @@ os.system("asm.py progs/03_zload_store_imm.asm bin/out014.txt")
 os.system("asm.py progs/04_cond_move.asm bin/out015.txt")
 os.system("asm.py progs/05_cond_minmax.asm bin/out016.txt")
 os.system("asm.py progs/05_cond_minmax2.asm bin/out017.txt")
+os.system("asm.py progs/06_cond_load_store.asm bin/out018.txt")

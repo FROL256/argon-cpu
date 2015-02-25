@@ -17,8 +17,8 @@ package body ATESTS is
 	  
 	case testId is 
 		
-	  when 0      => return 50; 
-      when others => return 50;
+	  when 0      => return 100; 
+      when others => return 100;
 		
     end case;
 	  
@@ -47,6 +47,7 @@ package body ATESTS is
 	  when 15     => return ((R0 = 10) and (R1 = 15)  and (R2 = 10)); 
 	  when 16     => return ((R0 = 3)  and (R1 = 0)   and (R2 = 4));
       when 17     => return ((R0 = 4)  and (R1 = 10)  and (R2 = 0));
+      when 18     => return ((R0 = 9)  and (R1 = 4)   and (R2 = 0));
       when others => return false;
 		
     end case;

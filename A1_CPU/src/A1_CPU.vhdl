@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 17) of string(1 to 21);
+  type testtype is array (1 to 18) of string(1 to 21);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -297,7 +297,8 @@ BEGIN
 									 14 => "../ASM/bin/out014.txt",
 									 15 => "../ASM/bin/out015.txt",
 									 16 => "../ASM/bin/out016.txt",
-									 17 => "../ASM/bin/out017.txt"
+									 17 => "../ASM/bin/out017.txt",
+                                     18 => "../ASM/bin/out018.txt"
 									 );
 	
   begin		  
@@ -309,11 +310,6 @@ BEGIN
    
    ------------------------------------ read program from file -------------------------------------------------
    file_open(file_PROG, binFiles(testId), read_mode); 
-   
-   if testId = 17 then
-     i := 0;
-   end if;
-   
 	   
    i := 0;
    while not endfile(file_PROG) loop   
@@ -333,7 +329,7 @@ BEGIN
    wait for 10 ns;
    
    i := 0;
-   while i < TestClocks(testId) loop	   
+   while i < 1000 loop	   
      wait for 10 ns; 
      clk  <= not clk;
 	 i := i+1;

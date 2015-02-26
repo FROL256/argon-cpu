@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 18) of string(1 to 21);
+  type testtype is array (1 to 19) of string(1 to 21);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -298,7 +298,8 @@ BEGIN
 									 15 => "../ASM/bin/out015.txt",
 									 16 => "../ASM/bin/out016.txt",
 									 17 => "../ASM/bin/out017.txt",
-                                     18 => "../ASM/bin/out018.txt"
+                                     18 => "../ASM/bin/out018.txt",
+                                     19 => "../ASM/bin/out019.txt"
 									 );
 	
   begin		  
@@ -491,7 +492,7 @@ BEGIN
 	 else	
 	   xB := op2_inputX;
 	 end if;	  
-	 -------------------------- bypassing ----------------------------
+	
 	 
 	 memInAlu := (cmdX.itype = INSTR_MEM);
 	 
@@ -504,6 +505,7 @@ BEGIN
 	   end if;
 	   
 	 end if;
+     -------------------------- bypassing ----------------------------
 		
 	 ----------------------------------------------------------------- add group
 	 --

@@ -49,6 +49,9 @@ package body ATESTS is
       when 17     => return ((R0 = 4)  and (R1 = 10)  and (R2 = 0));
       when 18     => return ((R0 = 9)  and (R1 = 4)   and (R2 = 0));
       when 19     => return ((R0 = 211901888) and (R1 = 637978969) and (R2 = 637978969));
+      when 20     => return ((R0 = 17) and (R1 = 10) and (R2 = 7));
+      when 21     => return ((R0 = 3)  and (R1 = 3)  and (R2 = 0));
+      when 22     => return ((R0 = 3)  and (R1 = 3)  and (R2 = 0));
       when others => return false;
 		
     end case;

@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 19) of string(1 to 21);
+  type testtype is array (1 to 22) of string(1 to 21);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -299,12 +299,15 @@ BEGIN
 									 16 => "../ASM/bin/out016.txt",
 									 17 => "../ASM/bin/out017.txt",
                                      18 => "../ASM/bin/out018.txt",
-                                     19 => "../ASM/bin/out019.txt"
+                                     19 => "../ASM/bin/out019.txt",
+                                     20 => "../ASM/bin/out020.txt",
+                                     21 => "../ASM/bin/out021.txt",
+                                     22 => "../ASM/bin/out022.txt"
 									 );
 	
   begin		  
 	  
-   for testId in binFiles'low to binFiles'high loop
+  for testId in binFiles'low to binFiles'high loop
 	    
    clk <= '0';
    rst <= '0';
@@ -464,15 +467,6 @@ BEGIN
 	 
 	 ---- register fetch ----
 	 
-		 
-	 ---- control unit ----	 
-	 if stall then
-	   ip <= ip;
-	 else
-	   ip <= ip+1;
-	 end if;	  
-     ---- control unit ----	
-	 
 	 
 	 ---- execution stage ----
 	 
@@ -493,6 +487,16 @@ BEGIN
 	   xB := op2_inputX;
 	 end if;	  
 	
+     ---- control unit ----	 
+	 if stall then
+	   ip <= ip;
+	 elsif (cmdX.itype = INSTR_CNTR and cmdX.code(1 downto 0) = C_JMP) then
+       ip <= to_uint(xB);
+     else
+	   ip <= ip+1;
+	 end if;	  
+     ---- control unit ----	
+
 	 
 	 memInAlu := (cmdX.itype = INSTR_MEM);
 	 

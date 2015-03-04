@@ -11,11 +11,11 @@ package A0 is
   
   subtype REGT is integer range 0 to 15;
   
-  type PROGRAM_MEMORY   is array (0 to 16384) of WORD; 
-  type L1_MEMORY        is array (0 to 65535) of WORD; 
-  type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
+  type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
+  type L1_MEMORY        is array (0 to 1023) of WORD; 
+  type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
   
-  type testtype is array (1 to 25) of string(1 to 21);
+  type testtype is array (1 to 27) of string(1 to 21);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -42,10 +42,11 @@ package A0 is
   constant M_STORE : STD_LOGIC_VECTOR(1 downto 0) := "10";
   constant M_SWAP  : STD_LOGIC_VECTOR(1 downto 0) := "11";
   
-  constant C_NOP   : STD_LOGIC_VECTOR(1 downto 0) := "00";
-  constant C_JMP   : STD_LOGIC_VECTOR(1 downto 0) := "01";
-  constant C_HLT   : STD_LOGIC_VECTOR(1 downto 0) := "10";
-  constant C_INT   : STD_LOGIC_VECTOR(1 downto 0) := "11";
+  constant C_NOP   : STD_LOGIC_VECTOR(2 downto 0) := "000";
+  constant C_JMP   : STD_LOGIC_VECTOR(2 downto 0) := "001";
+  constant C_JRA   : STD_LOGIC_VECTOR(2 downto 0) := "100";
+  constant C_HLT   : STD_LOGIC_VECTOR(2 downto 0) := "010";
+  constant C_INT   : STD_LOGIC_VECTOR(2 downto 0) := "011";
   						
   
   type Flags is record		 
@@ -239,7 +240,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal clk  : STD_LOGIC := '0';  
   signal rst  : STD_LOGIC := '0';
   
-  signal ip   : integer range 0 to 16383 := 0;	-- instruction pointer
+  signal ip   : integer range 0 to PROGRAM_MEMORY'high := 0;	-- instruction pointer
   
   signal cmdD : Instruction := CMD_NOP; 
   signal cmdX : Instruction := CMD_NOP; 
@@ -269,6 +270,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal carryOut    : std_logic := '0';  
   signal highValue   : WORD := x"00000000";	  
   
+  signal halt : boolean := false; 
   
 BEGIN	
   
@@ -305,7 +307,9 @@ BEGIN
                                      22 => "../ASM/bin/out022.txt",
                                      23 => "../ASM/bin/out023.txt",
                                      24 => "../ASM/bin/out024.txt",
-                                     25 => "../ASM/bin/out025.txt"
+                                     25 => "../ASM/bin/out025.txt",
+                                     26 => "../ASM/bin/out026.txt",
+                                     27 => "../ASM/bin/out027.txt"
 									 );
 	
   begin		  
@@ -388,6 +392,7 @@ BEGIN
 	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address		 
 		
 	variable invalidateNow : boolean := false;
+    variable haltNow : boolean := false;
 	-------------- alu input and internal ----------------
 	
   begin						
@@ -399,6 +404,7 @@ BEGIN
 	 cmdX <= CMD_NOP; 
 	 cmdM <= CMD_NOP; 
 	 cmdW <= CMD_NOP; 
+     halt <= false;
 	   
    elsif rising_edge(clk) then	   
 	
@@ -416,9 +422,11 @@ BEGIN
 	 -- add R3, R0, R1  -->   F F D X M W  |
      -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
 	 --
-	 stall   := (cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2);
-	 stall   := stall or ( (cmdF.itype = INSTR_CNTR) and cmdF.code(1 downto 0) = C_HLT); -- and this is specially for hlt command
+     haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);	 
+     stall   := ((cmdD.itype = INSTR_MEM) and cmdD.we and (cmdD.reg0 = cmdF.reg1 or cmdD.reg0 = cmdF.reg2)) or haltNow;
 	 
+     halt <= haltNow;
+
 	 if stall or cmdD.imm then -- push nop to cmdD in next cycle, cause if cmdD is immediate, next instructions is it's data
 	   cmdD <= CMD_NOP;
 	 else
@@ -431,6 +439,7 @@ BEGIN
 	 cmdX <= cmdD; -- from D to X
 	 cmdM <= cmdX; -- from X to M	 -- here we have to deal with flags values and predicate commands
 	 
+     invalidateNow := false;
 	 if cmdX.flags.N or cmdX.flags.Z or cmdX.flags.LT or cmdX.flags.P then	  	 
        invalidateNow := InvalidateCmdIfFlagsDifferent(cmdX.flags, flags_Z, flags_LT, flags_P);
 	   cmdM.invalid <= invalidateNow;
@@ -491,10 +500,16 @@ BEGIN
 	 end if;	  
 	
      ---- control unit ----	 
-	 if stall then
+	 if stall or halt then
 	   ip <= ip;
-	 elsif (cmdX.itype = INSTR_CNTR and cmdX.code(1 downto 0) = C_JMP and not invalidateNow) then
-       ip <= to_uint(xB);
+	 elsif (cmdX.itype = INSTR_CNTR and not invalidateNow) then
+
+       if cmdX.code(2 downto 0) = C_JMP  then
+         ip <= to_uint(xB);          -- JMP, Jummp (absolute addr)
+       else
+         ip <= to_uint(xB) + ip - 2; -- JRA, Jump Relative Addr
+       end if;
+
      else
 	   ip <= ip+1;
 	 end if;	  

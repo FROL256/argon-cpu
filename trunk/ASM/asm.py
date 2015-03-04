@@ -1,7 +1,8 @@
 import ctypes
 import sys
 
-cmdDict = {'nop' : 0, 
+cmdDict = {'nop' : 0,
+ 
            'shl' : 1, 
            'shr' : 2,
            'mov' : 3,
@@ -18,10 +19,12 @@ cmdDict = {'nop' : 0,
 		   
            'lw'  : 1,
            'sw'  : 2,
+           'swp' : 3,
 		   
-           'jmp' : 1,  
+           'jmp' : 1,
+           'jra' : 4,  
            'hlt' : 2,
-           'int' : 3}
+           'int' : 3,}
    		   
 def encodeCommand(tokens):
   

@@ -15,7 +15,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 65535) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)    of WORD; 
   
-  type testtype is array (1 to 22) of string(1 to 21);
+  type testtype is array (1 to 25) of string(1 to 21);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -264,7 +264,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal flags_Z  : boolean := false; -- Zero
   signal flags_LT : boolean := false; -- Less Than
-  signal flags_P  : boolean := false; -- Less Equal	
+  signal flags_P  : boolean := false; -- Custom Predicate	
   
   signal carryOut    : std_logic := '0';  
   signal highValue   : WORD := x"00000000";	  
@@ -302,7 +302,10 @@ BEGIN
                                      19 => "../ASM/bin/out019.txt",
                                      20 => "../ASM/bin/out020.txt",
                                      21 => "../ASM/bin/out021.txt",
-                                     22 => "../ASM/bin/out022.txt"
+                                     22 => "../ASM/bin/out022.txt",
+                                     23 => "../ASM/bin/out023.txt",
+                                     24 => "../ASM/bin/out024.txt",
+                                     25 => "../ASM/bin/out025.txt"
 									 );
 	
   begin		  
@@ -490,7 +493,7 @@ BEGIN
      ---- control unit ----	 
 	 if stall then
 	   ip <= ip;
-	 elsif (cmdX.itype = INSTR_CNTR and cmdX.code(1 downto 0) = C_JMP) then
+	 elsif (cmdX.itype = INSTR_CNTR and cmdX.code(1 downto 0) = C_JMP and not invalidateNow) then
        ip <= to_uint(xB);
      else
 	   ip <= ip+1;

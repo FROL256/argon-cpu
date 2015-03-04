@@ -75,7 +75,7 @@ def encodeCommand(tokens):
   ## //////////////////////////////////////////////////////////////////////////////////  mem offset, alu specific and cond flags
   
   cond = ''
-  if tokens[2] == 'a': 
+  if tokens[2] == 'a' or tokens[2] == 'c': 
     signedFlag   = 0
     setFlagsFlag = 0
     if tokens[7] == 's': 
@@ -90,7 +90,7 @@ def encodeCommand(tokens):
     if len(tokens) < 11: return bits
     cond = tokens[10]
 	
-  else:
+  elif tokens[2] == 'm':
     memOffs = int(tokens[7])
     if memOffs <= 255:
       bits |= (memOffs << 4)

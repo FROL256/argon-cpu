@@ -1,6 +1,6 @@
 import os
 
-#os.system("asm.py progs/10_jmp_imm.asm bin/out001.txt")
+#os.system("asm.py progs/12_jmp_cond.asm bin/out001.txt")
 os.system("asm.py progs/00_add_numbers.asm bin/out001.txt")
 os.system("asm.py progs/00_load_store.asm  bin/out002.txt")
 os.system("asm.py progs/01_bypass_D_to_X.asm bin/out003.txt")
@@ -23,3 +23,6 @@ os.system("asm.py progs/07_mul_mfh.asm bin/out019.txt")
 os.system("asm.py progs/08_cond_bypass_yes.asm bin/out020.txt")
 os.system("asm.py progs/09_cond_bypass_no.asm bin/out021.txt")
 os.system("asm.py progs/10_jmp_imm.asm bin/out022.txt")
+os.system("asm.py progs/11_jmp_r.asm bin/out023.txt")
+os.system("asm.py progs/12_jmp_cond.asm bin/out024.txt")
+os.system("asm.py progs/13_jmp_loop_fact.asm bin/out025.txt")

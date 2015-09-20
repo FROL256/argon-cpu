@@ -1,7 +1,9 @@
 LIBRARY ieee;
 LIBRARY work;
-USE ieee.std_logic_1164.all;
+USE ieee.std_logic_1164.all; 
+USE ieee.numeric_std.all;
 USE work.UTILS.all;
+
 
 
 package A0 is
@@ -119,6 +121,14 @@ package A0 is
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
+  procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
+                            signal carryOut : inout std_logic;
+                            signal flags_Z  : inout boolean; 
+                            signal flags_LT : inout boolean;
+                            signal resLow   : inout WORD;
+                            signal resHigh  : inout WORD;
+                            signal addOut   : out WORD);
+
 end A0;
 
 
@@ -203,6 +213,118 @@ package body A0 is
 	  
   end InvalidateCmdIfFlagsDifferent;
   
+  -- do integer alu operation in a single cycle
+  --
+  procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
+                            signal carryOut : inout std_logic;
+                            signal flags_Z  : inout boolean; 
+                            signal flags_LT : inout boolean;
+                            signal resLow   : inout WORD;
+                            signal resHigh  : inout WORD;
+                            signal addOut   : out WORD) is
+   
+    variable yB     : WORD                  := x"00000000";     -- second op passed to adder
+	variable rShift : WORD                  := (others => '0');	-- result of shift ops group
+	variable rLog   : WORD                  := (others => '0');	-- result of logic ops group
+	variable rAdd   : unsigned(32 downto 0) := (others => '0');	-- result of add   ops group  
+    variable rMulc  : WORD                  := (others => '0');	-- result of mult  ops group	
+	variable rMul   : unsigned(63 downto 0) := (others => '0');	-- result of true multiplication  
+	
+	variable carryIn : std_logic := '0'; 
+	variable zero    : std_logic := '0'; 
+	
+	variable shiftS   : std_logic := '0';   
+	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address		 
+  
+  begin
+
+    memInAlu := (cmdX.itype = INSTR_MEM);     
+    
+    if cmdX.code(1) = '1' and not memInAlu then  -- sub or sbc  
+	  yB := not xB;
+	else	 
+	  yB := xB;	   
+	end if;			 
+	  
+	carryIn := ToStdLogic( ((cmdX.code(1 downto 0) = "10") or (cmdX.code(1 downto 0) = "01" and carryOut = '1')) and not memInAlu); -- SUB or ADC and not mem operation
+	   
+	rAdd := ("0" & unsigned(xA)) + unsigned(yB) + (unsigned'("") & carryIn); -- full 32 bit adder with carry
+	carryOut <= rAdd(32); 	  
+	   
+	zero := not (rAdd(31) or rAdd(30) or rAdd(29) or rAdd(28) or rAdd(27) or rAdd(26) or rAdd(25) or rAdd(24) or rAdd(23) or rAdd(22) or 
+	             rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
+	             rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
+		
+   if cmdX.itype = INSTR_ALUI then
+	 
+     if cmdX.flags.CF then
+	  	flags_Z  <= (zero     = '1');
+		flags_LT <= (rAdd(31) = '1');  -- sign bit
+	 else
+	   flags_Z   <= flags_Z;
+		flags_LT <= flags_LT;
+	 end if;
+	  
+	 ----------------------------------------------------------------- mul group	(may be need to optimize, may be not)
+     
+	 if cmdX.flags.S then 
+	   rMul := unsigned(signed(xA) * signed(xB));
+	 else
+	   rMul := unsigned(xA) * unsigned(xB);		      -- full 32 to 64 bit signed/unsigned multiplyer;	
+	 end if;
+	  
+	 resHigh <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
+	  
+	 case cmdX.code(1 downto 0) is
+	   when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
+	   when others => rMulc := resHigh;							    -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+	 end case;
+	  
+	 ----------------------------------------------------------------- logic group
+	 --
+	 case cmdX.code(1 downto 0) is
+	   when "00"   => rLog := xA and xB;	 
+	   when "01"   => rLog := xA or  xB;
+	   when "10"   => rLog :=    not xA;
+	   when others => rLog := xA xor xB;
+	 end case;  
+	  
+	 ----------------------------------------------------------------- shift group
+	 --	
+	 if cmdX.flags.S then	 
+	   shiftS := xA(31); 	 -- arithmetic shifts
+	 else
+	   shiftS := '0';    	 -- common shifts
+	 end if;
+	  
+	 case cmdX.code(1 downto 0) is
+	   when "01"   => rShift := xA(30 downto 0) & '0';  	 -- replace with sll
+		              if cmdX.flags.S then 
+                        rShift(31) := shiftS;
+			  		  end if;	 
+	   when "10"   => rShift := shiftS & xA(31 downto 1);	 -- replace with srl
+	   when "11"   => rShift := xB;
+	   when others => rShift := x"00000000";
+	 end case;
+	  
+	 -- get final result	 
+	 --
+ 
+	 case cmdX.code(3 downto 2) is	   
+       when "00"   => resLow  <= rShift;
+       when "01"   => resLow  <= std_logic_vector(rAdd(31 downto 0));
+       when "10"   => resLow  <= rLog;
+	   when others => resLow  <= rMulc;
+     end case; 	 
+	 -------------------------- alu core ----------------------------- 
+  else
+    resLow <= x"00000000";
+  end if;
+ 
+  addOut <= std_logic_vector(rAdd(31 downto 0));
+     
+  end ALUIntOperation; 
+
   
 end A0;
 
@@ -376,20 +498,7 @@ BEGIN
 	
 	-------------- alu input and internal ----------------
 	variable xA : WORD := x"00000000"; -- first op
-	variable xB : WORD := x"00000000"; -- second op
-	variable yB : WORD := x"00000000"; -- second op passed to adder
-
-	variable rShift : WORD                  := (others => '0');	-- result of shift ops group
-	variable rLog   : WORD                  := (others => '0');	-- result of logic ops group
-	variable rAdd   : unsigned(32 downto 0) := (others => '0');	-- result of add   ops group  
-    variable rMulc  : WORD                  := (others => '0');	-- result of mult  ops group	
-	variable rMul   : unsigned(63 downto 0) := (others => '0');	-- result of true multiplication  
-	
-	variable carryIn : std_logic := '0'; 
-	variable zero    : std_logic := '0'; 
-	
-	variable shiftS   : std_logic := '0';   
-	variable memInAlu : boolean   := false; 	-- if current mem command in alu calc address		 
+	variable xB : WORD := x"00000000"; -- second op 
 		
 	variable invalidateNow : boolean := false;
     variable haltNow : boolean := false;
@@ -480,7 +589,8 @@ BEGIN
 	 ---- register fetch ----
 	 
 	 
-	 ---- execution stage ----
+	 ------------------------------ execution stage ------------------------------
+     
 	 
 	 -------------------------- bypassing ----------------------------	 
 	 if    cmdM.reg0 = cmdX.reg1 and cmdM.we then   -- bypass result from X to op1
@@ -498,7 +608,27 @@ BEGIN
 	 else	
 	   xB := op2_inputX;
 	 end if;	  
+	 
+	 if (cmdX.itype = INSTR_MEM) then  -- alter second op to compute address if mem istruction occured	
+       
+	   if cmdX.imm then	
+		 xA := imm_value;
+	   else
+	     xA := x"000000" & cmdX.memOffs(7 downto 0);
+	   end if;
+	   
+	 end if;
+     -------------------------- bypassing ----------------------------
+		
+	 ALUIntOperation(cmdX, xA, xB, 
+                     carryOut, flags_Z, flags_LT,
+                     resLow  => resultX,
+                     resHigh => highValue,
+                     addOut  => op2_inputM);
+	 
+	 op1_inputM <= op1_inputX;
 	
+
      ---- control unit ----	 
 	 if stall or halt then
 	   ip <= ip;
@@ -514,110 +644,8 @@ BEGIN
 	   ip <= ip+1;
 	 end if;	  
      ---- control unit ----	
-
-	 
-	 memInAlu := (cmdX.itype = INSTR_MEM);
-	 
-	 if memInAlu then  -- alter second op to compute address if mem istruction occured	
-       
-	   if cmdX.imm then	
-		 xA := imm_value;
-	   else
-	     xA := x"000000" & cmdX.memOffs(7 downto 0);
-	   end if;
-	   
-	 end if;
-     -------------------------- bypassing ----------------------------
-		
-	 ----------------------------------------------------------------- add group
-	 --
-	 if cmdX.code(1) = '1' and not memInAlu then  -- sub or sbc  
-	   yB := not xB;
-	 else	 
-	   yB := xB;	   
-	 end if;			 
-	  
-	 carryIn := ToStdLogic( ((cmdX.code(1 downto 0) = "10") or (cmdX.code(1 downto 0) = "01" and carryOut = '1')) and not memInAlu); -- SUB or ADC and not mem operation
-	   
-	 rAdd := ("0" & unsigned(xA)) + unsigned(yB) + (unsigned'("") & carryIn); -- full 32 bit adder with carry
-	 carryOut <= rAdd(32); 	  
-	   
-	 zero := not (rAdd(31) or rAdd(30) or rAdd(29) or rAdd(28) or rAdd(27) or rAdd(26) or rAdd(25) or rAdd(24) or rAdd(23) or rAdd(22) or 
-	              rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
-	              rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
-		
-				  
-	 if cmdX.itype = INSTR_ALUI then 
-	    
-	   if cmdX.flags.CF then
-	   	 flags_Z  <= (zero     = '1');
-		 flags_LT <= (rAdd(31) = '1');  -- sign bit
-	   else
-	     flags_Z  <= flags_Z;
-		 flags_LT <= flags_LT;
-	   end if;
-	   
-	   ----------------------------------------------------------------- mul group	(may be need to optimize, may be not)
-      
-	   if cmdX.flags.S then 
-		 rMul := unsigned(signed(xA) * signed(xB));
-	   else
-		 rMul := unsigned(xA) * unsigned(xB);		      -- full 32 to 64 bit signed/unsigned multiplyer;	
-	   end if;
-	   
-	   highValue <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
-	   
-	   case cmdX.code(1 downto 0) is
-		 when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
-		 when others => rMulc := highValue;							  -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
-	   end case;
-	   
-	   ----------------------------------------------------------------- logic group
-	   --
-	   case cmdX.code(1 downto 0) is
-	     when "00"   => rLog := xA and xB;	 
-		 when "01"   => rLog := xA or  xB;
-		 when "10"   => rLog :=    not xA;
-		 when others => rLog := xA xor xB;
-	   end case;  
-	   
-	   ----------------------------------------------------------------- shift group
-	   --	
-	   if cmdX.flags.S then	 
-	     shiftS := xA(31); 	 -- arithmetic shifts
-	   else
-	     shiftS := '0';    	 -- common shifts
-	   end if;
-	   
-	   case cmdX.code(1 downto 0) is
-		 when "01"   => rShift := xA(30 downto 0) & '0';  	 -- replace with sll
-		                if cmdX.flags.S then 
-			 			  rShift(31) := shiftS;
-			  			end if;	 
-		 when "10"   => rShift := shiftS & xA(31 downto 1);	 -- replace with srl
-		 when "11"   => rShift := xB;
-		 when others => rShift := x"00000000";
-	   end case;
-	   
-	   -- get final result	 
-	   --
-	   case cmdX.code(3 downto 2) is	   
-         when "00"   => resultX  <= rShift;
-         when "01"   => resultX  <= std_logic_vector(rAdd(31 downto 0));
-         when "10"   => resultX  <= rLog;
-	     when others => resultX  <= rMulc;
-       end case; 	 
-	   -------------------------- alu core ----------------------------- 
-
-	  
-	 else
-	   resultX <= x"00000000";	 
-     end if;
-	 
-	 op1_inputM <= op1_inputX;
-	 op2_inputM <= std_logic_vector(rAdd(31 downto 0));
-	 
-	 ---- execution stage ----
+ 
+	 ------------------------------ execution stage ------------------------------
 	 
 	 
 	 ---- memory stage ----	                             no bypassing from M to M

@@ -112,9 +112,14 @@ package A0 is
     memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions 
     flags   : Flags;                         -- predicates
     invalid : boolean;                       -- used later if instruction marked invalid due to predicates or cache miss
+    op1     : WORD;
+    op2     : WORD;
+    res     : WORD;
   end record;        
   
-  constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, memOffs => x"00", flags => (others => false), invalid => false);
+  constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, 
+                                     memOffs => x"00", flags => (others => false), invalid => false,
+                                     op1 => x"00000000", op2 => x"00000000", res => x"00000000");
   
   function ToInstruction(data : WORD) return Instruction; 
   function ToStdLogic(L: BOOLEAN) return std_logic; 
@@ -141,8 +146,8 @@ package body A0 is
     
     cmd.imm      := ToBoolean(data(31));          -- first bit is 'immediate' flag  
     cmd.we       := ToBoolean(data(30));          -- second is 'write enable' flag
-    cmd.itype    := data(29 downto 28);           -- next 2-bit instruction type
-    cmd.code     := data(27 downto 24);           -- next 4 bit for opcodes 
+    cmd.itype    :=         data(29 downto 28);   -- next 2-bit instruction type
+    cmd.code     :=         data(27 downto 24);   -- next 4 bit for opcodes 
     cmd.reg0     := to_uint(data(23 downto 20));  -- next 4 bits for reg0
     cmd.reg1     := to_uint(data(19 downto 16));  -- next 4 bits for reg1
     cmd.reg2     := to_uint(data(15 downto 12));  -- next 4 bits for reg2 
@@ -298,9 +303,9 @@ package body A0 is
     
    case cmdX.code(1 downto 0) is
      when "01"   => rShift := xA(30 downto 0) & '0';     -- replace with sll
-                  if cmdX.flags.S then 
-                        rShift(31) := shiftS;
-              end if;  
+                    if cmdX.flags.S then 
+                      rShift(31) := shiftS;
+                    end if;  
      when "10"   => rShift := shiftS & xA(31 downto 1);  -- replace with srl
      when "11"   => rShift := xB;
      when others => rShift := x"00000000";
@@ -313,8 +318,8 @@ package body A0 is
        when "00"   => resLow  <= rShift;
        when "01"   => resLow  <= std_logic_vector(rAdd(31 downto 0));
        when "10"   => resLow  <= rLog;
-     when others => resLow  <= rMulc;
-     end case;   
+       when others => resLow  <= rMulc;
+   end case;   
    -------------------------- alu core ----------------------------- 
   else
     resLow <= x"00000000";
@@ -372,24 +377,15 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
-  --signal mem_offs : std_logic_vector(7 downto 0); 
-  
-  signal op1_inputX  : WORD := x"00000000";
-  signal op2_inputX  : WORD := x"00000000"; 
   signal imm_value   : WORD := x"00000000";
-  
-  signal op1_inputM  : WORD := x"00000000";
-  signal op2_inputM  : WORD := x"00000000";
-  
-  signal resultX     : WORD := x"00000000"; -- after ALU 
-  signal resultM     : WORD := x"00000000"; -- after MEM  
+ 
   
   signal flags_Z  : boolean := false; -- Zero
   signal flags_LT : boolean := false; -- Less Than
   signal flags_P  : boolean := false; -- Custom Predicate 
   
-  signal carryOut    : std_logic := '0';  
-  signal highValue   : WORD := x"00000000";   
+  signal carryOut  : std_logic := '0';  
+  signal highValue : WORD := x"00000000";   
   
   signal halt : boolean := false; 
   
@@ -464,8 +460,10 @@ BEGIN
    while i < 1000 loop     
      wait for 10 ns; 
      clk  <= not clk;
-   i := i+1;
+     i := i+1;
    end loop;   
+
+   ------------------------------------ finish                  ------------------------------------------------- 
    
    if CheckTest(testId, to_sint(regs(0)), to_sint(regs(1)), to_sint(regs(2))) then
      report "TEST " & integer'image(testId) & " PASSED!";
@@ -480,15 +478,12 @@ BEGIN
   end process clock;
   ------------------------------------ this is only for simulation purposes ------------------------------------
     
-    
-    
-  
   main : process(clk,rst)
   
   -------------- fetch input ----------------
   variable cmdF    : Instruction;
   variable rawCmdF : WORD;             
-  variable stall   : boolean := false;
+  variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
   -------------- mem input ----------------
@@ -516,7 +511,7 @@ BEGIN
      
    elsif rising_edge(clk) then     
   
-     -----------------------------------------------------------------------------------------------------------------
+   -----------------------------------------------------------------------------------------------------------------
    ---------------------------------------  core arch begin --------------------------------------------------------
    -----------------------------------------------------------------------------------------------------------------   
   
@@ -525,17 +520,17 @@ BEGIN
    rawCmdF := program(ip);
    cmdF    := ToInstruction(rawCmdF);
    
-   -- this is the only case for 5-stage RISC processor when we must stall, because Mem operations have 2 clock latency
+   -- this is the only case for 5-stage RISC processor when we must bubble, because Mem operations have 2 clock latency
    -- load R0, [R1+2] --> F D X M W    | bypass after M to X
    -- add R3, R0, R1  -->   F F D X M W  |
    -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
    --
    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-   stall   := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow;
+   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow;
    
    halt <= haltNow;
 
-   if stall or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
+   if bubble or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
      afterF <= CMD_NOP;
    else
      afterF <= cmdF;
@@ -562,25 +557,25 @@ BEGIN
    ---- register fetch ----
    
    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
-     op1_inputX <= resultX; 
+     afterD.op1 <= afterX.res; 
    elsif afterM.reg0 = afterF.reg1 and afterM.we then  -- bypass result from M to op1
-     op1_inputX <= resultM; 
+     afterD.op1 <= afterM.res; 
    else  
-     op1_inputX <= regs(afterF.reg1);        -- ok, read from register file
+     afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
    end if; 
    
    imm_value    <= rawCmdF;
    
-   if afterF.imm then                    -- read from instruction memory and ignore bypassing if commad is immediate
-     op2_inputX <= rawCmdF; 
+   if afterF.imm then                                    -- read from instruction memory and ignore bypassing if commad is immediate
+     afterD.op2 <= rawCmdF; 
    else       
      
      if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
-       op2_inputX <= resultX; 
+       afterD.op2 <= afterX.res; 
      elsif afterM.reg0 = afterF.reg2 and afterM.we then  -- bypass result from M to op1
-       op2_inputX <= resultM;
-       else 
-       op2_inputX <= regs(afterF.reg2);              -- ok, read from register file
+       afterD.op2 <= afterM.res;
+     else 
+       afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
      end if;    
      
    end if;
@@ -593,19 +588,19 @@ BEGIN
    
    -------------------------- bypassing ----------------------------   
    if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
-     xA := resultX;
+     xA := afterX.res;
    elsif afterM.reg0 = afterD.reg1 and afterM.we then -- bypass result from M to op1
-     xA := resultM; 
+     xA := afterM.res; 
    else 
-     xA := op1_inputX;
+     xA := afterD.op1;
    end if;
      
    if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
-     xB := resultX;
+     xB := afterX.res;
    elsif afterM.reg0 = afterD.reg2 and not afterD.imm and afterM.we then   -- bypass result from M to op2 and ignore bypassing second op for immediate commands
-     xB := resultM; 
+     xB := afterM.res; 
    else 
-     xB := op2_inputX;
+     xB := afterD.op2;
    end if;    
    
    if (afterD.itype = INSTR_MEM) then  -- alter second op to compute address if mem istruction occured  
@@ -621,15 +616,14 @@ BEGIN
     
    ALUIntOperation(afterD, xA, xB, 
                    carryOut, flags_Z, flags_LT,
-                   resLow  => resultX,
+                   resLow  => afterX.res,
                    resHigh => highValue,
-                   addOut  => op2_inputM);
-   
-   op1_inputM <= op1_inputX;
+                   addOut  => afterX.op2);
+  
   
 
-     ---- control unit ----  
-   if stall or halt then
+   ---- control unit ----  
+   if bubble then
      ip <= ip;
    elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
 
@@ -642,7 +636,7 @@ BEGIN
    else
      ip <= ip+1;
    end if;    
-     ---- control unit ---- 
+   ---- control unit ---- 
  
    ------------------------------ execution stage ------------------------------
    
@@ -651,21 +645,21 @@ BEGIN
   
    if afterX.itype = INSTR_MEM and not afterX.invalid then    
      
-     address := to_uint(op2_inputM);     
+     address := to_uint(afterX.op2);     
      
      case afterX.code(1 downto 0) is
-       when M_LOAD  =>   resultM         <= memory(address);   
+       when M_LOAD  =>   afterM.res      <= memory(address);   
        
-       when M_STORE =>   memory(address) <= op1_inputM;      
+       when M_STORE =>   memory(address) <= afterX.op1;      
        
-       when M_SWAP  =>   resultM         <= memory(address);   
-                         memory(address) <= op1_inputM;
+       when M_SWAP  =>   afterM.res      <= memory(address);   
+                         memory(address) <= afterX.op1;
                    
-       when others  =>   resultM         <= x"00000000"; 
+       when others  =>   afterM.res      <= x"00000000"; 
      end case;
     
    else
-     resultM <= resultX;   
+     afterM.res <= afterX.res;   
    end if;
    
    ---- memory stage ----
@@ -673,7 +667,7 @@ BEGIN
    
    ---- write back   ----   
    if afterM.we and not afterM.invalid then
-     regs(afterM.reg0) <= resultM;  
+     regs(afterM.reg0) <= afterM.res;  
    end if;
    ---- write back   ----
    

@@ -46,20 +46,20 @@ package body ATESTS is
 	  when 14     => return ((R0 = 16) and (R1 = 16)  and (R2 = 20));
 	  when 15     => return ((R0 = 10) and (R1 = 15)  and (R2 = 10)); 
 	  when 16     => return ((R0 = 3)  and (R1 = 0)   and (R2 = 4));
-      when 17     => return ((R0 = 4)  and (R1 = 10)  and (R2 = 0));
-      when 18     => return ((R0 = 9)  and (R1 = 4)   and (R2 = 0));
-      when 19     => return ((R0 = 211901888) and (R1 = 637978969) and (R2 = 637978969));
-      when 20     => return ((R0 = 17) and (R1 = 10) and (R2 = 7));
-      when 21     => return ((R0 = 3)  and (R1 = 3)  and (R2 = 0));
-      when 22     => return ((R0 = 4)  and (R1 = 4)  and (R2 = 0));
-      when 23     => return ((R0 = 5)  and (R1 = 5)  and (R2 = 0));
-      when 24     => return ((R0 = 7)  and (R1 = 0)  and (R2 = 7));
-      when 25     => return ((R0 = 726)and (R1 = 720)and (R2 = 7));
-      when 26     => return ((R0 = 8)  and (R1 = 8)  and (R2 = 0));
-      when 27     => return ((R0 = 5)  and (R1 = 3)  and (R2 = 10));
-      when others => return false;
+    when 17     => return ((R0 = 4)  and (R1 = 10)  and (R2 = 0));
+    when 18     => return ((R0 = 9)  and (R1 = 4)   and (R2 = 0));
+    when 19     => return ((R0 = 211901888) and (R1 = 637978969) and (R2 = 637978969));
+    when 20     => return ((R0 = 17) and (R1 = 10) and (R2 = 7));
+    when 21     => return ((R0 = 3)  and (R1 = 3)  and (R2 = 0));
+    when 22     => return ((R0 = 4)  and (R1 = 4)  and (R2 = 0));
+    when 23     => return ((R0 = 5)  and (R1 = 5)  and (R2 = 0));
+    when 24     => return ((R0 = 7)  and (R1 = 0)  and (R2 = 7));
+    when 25     => return ((R0 = 726)and (R1 = 720)and (R2 = 7));
+    when 26     => return ((R0 = 8)  and (R1 = 8)  and (R2 = 0));
+    when 27     => return ((R0 = 5)  and (R1 = 3)  and (R2 = 10));
+    when others => return false;
 		
-    end case;
+  end case;
 	
   end CheckTest;
  

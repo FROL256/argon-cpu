@@ -54,7 +54,7 @@ def encodeCommand(tokens):
   ## ////////////////////////////////////////////////////////////////////////////////// instruction op code
   
   op = tokens[3]
-  if cmdDict.has_key(op):
+  if op in cmdDict.keys():
     opCodeMask = (cmdDict[op] << 24)
     bits |= opCodeMask
   
@@ -181,7 +181,7 @@ def mainVHDL(inFileName, outFileName):
   i = 0
   for line in f:
     tokens = line.rstrip().replace(" ", "").split(',')
-    print tokens
+    print (tokens)
     cmdBin = encodeLine(tokens)
     strHex = hex(cmdBin)
 	
@@ -207,7 +207,7 @@ if len(sys.argv) > 1:
   outPath = sys.argv[2]
   main(path, outPath, True)
 
-  print path + "\t--> " + outPath 
+  print (path + "\t--> " + outPath) 
   
 else:
 
@@ -215,4 +215,4 @@ else:
   mainVHDL(path, "out.vhdl") 
   main(path, "out.txt", True)   
   
-  print path + "\t--> Ok"
+  print (path + "\t--> Ok")

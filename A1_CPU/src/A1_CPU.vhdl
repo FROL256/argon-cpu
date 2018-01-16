@@ -17,7 +17,7 @@ package A0 is
   type L1_MEMORY        is array (0 to 1023) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
   
-  type testtype is array (1 to 27) of string(1 to 21);
+  type testtype is array (1 to 27) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -400,33 +400,33 @@ BEGIN
   variable i        : integer := 0; 
   variable testId   : integer := 0;  
   
-  constant binFiles : testtype := (1  => "../ASM/bin/out001.txt", 
-                                   2  => "../ASM/bin/out002.txt",
-                                   3  => "../ASM/bin/out003.txt",
-                                   4  => "../ASM/bin/out004.txt", 
-                                   5  => "../ASM/bin/out005.txt",
-                                   6  => "../ASM/bin/out006.txt",
-                                   7  => "../ASM/bin/out007.txt",
-                                   8  => "../ASM/bin/out008.txt",
-                                   9  => "../ASM/bin/out009.txt",
-                                   10 => "../ASM/bin/out010.txt",
-                                   11 => "../ASM/bin/out011.txt",
-                                   12 => "../ASM/bin/out012.txt",
-                                   13 => "../ASM/bin/out013.txt",
-                                   14 => "../ASM/bin/out014.txt",
-                                   15 => "../ASM/bin/out015.txt",
-                                   16 => "../ASM/bin/out016.txt",
-                                   17 => "../ASM/bin/out017.txt",
-                                   18 => "../ASM/bin/out018.txt",
-                                   19 => "../ASM/bin/out019.txt",
-                                   20 => "../ASM/bin/out020.txt",
-                                   21 => "../ASM/bin/out021.txt",
-                                   22 => "../ASM/bin/out022.txt",
-                                   23 => "../ASM/bin/out023.txt",
-                                   24 => "../ASM/bin/out024.txt",
-                                   25 => "../ASM/bin/out025.txt",
-                                   26 => "../ASM/bin/out026.txt",
-                                   27 => "../ASM/bin/out027.txt"
+  constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
+                                   2  => "../../ASM/bin/out002.txt",
+                                   3  => "../../ASM/bin/out003.txt",
+                                   4  => "../../ASM/bin/out004.txt", 
+                                   5  => "../../ASM/bin/out005.txt",
+                                   6  => "../../ASM/bin/out006.txt",
+                                   7  => "../../ASM/bin/out007.txt",
+                                   8  => "../../ASM/bin/out008.txt",
+                                   9  => "../../ASM/bin/out009.txt",
+                                   10 => "../../ASM/bin/out010.txt",
+                                   11 => "../../ASM/bin/out011.txt",
+                                   12 => "../../ASM/bin/out012.txt",
+                                   13 => "../../ASM/bin/out013.txt",
+                                   14 => "../../ASM/bin/out014.txt",
+                                   15 => "../../ASM/bin/out015.txt",
+                                   16 => "../../ASM/bin/out016.txt",
+                                   17 => "../../ASM/bin/out017.txt",
+                                   18 => "../../ASM/bin/out018.txt",
+                                   19 => "../../ASM/bin/out019.txt",
+                                   20 => "../../ASM/bin/out020.txt",
+                                   21 => "../../ASM/bin/out021.txt",
+                                   22 => "../../ASM/bin/out022.txt",
+                                   23 => "../../ASM/bin/out023.txt",
+                                   24 => "../../ASM/bin/out024.txt",
+                                   25 => "../../ASM/bin/out025.txt",
+                                   26 => "../../ASM/bin/out026.txt",
+                                   27 => "../../ASM/bin/out027.txt"
                                   );
   
   begin     

@@ -4,8 +4,6 @@ USE ieee.std_logic_1164.all;
 USE ieee.numeric_std.all;
 USE work.UTILS.all;
 
-
-
 package A0 is
   
   subtype WORD is STD_LOGIC_VECTOR (31 downto 0);
@@ -50,7 +48,6 @@ package A0 is
   constant C_HLT   : STD_LOGIC_VECTOR(2 downto 0) := "010";
   constant C_INT   : STD_LOGIC_VECTOR(2 downto 0) := "011";
               
-  
   type Flags is record     
     N  : boolean; -- if set, invert flags (Z,LT,P)
     Z  : boolean; -- Zero
@@ -58,8 +55,7 @@ package A0 is
     P  : boolean; -- Predicate  
     CF : boolean; -- if command set flags
     S  : boolean; -- if operation is signed
-  end record;         
-  
+  end record;           
   
   -- unlike common implementation, there is no immediate bit fields in instruction
   -- Immediate data will be taken as whole next instruction word. Like this:
@@ -99,7 +95,6 @@ package A0 is
   -- 01 11 ... same as for ALUI.
   
   -- OPCODE = "00" & CODE where "00" is instruction type
-  
   --
   type Instruction is record
     imm     : boolean;                       -- immediate flag          
@@ -136,9 +131,7 @@ package A0 is
 
 end A0;
 
-
 package body A0 is
-
   
   function ToInstruction(data : WORD) return Instruction is
     variable cmd : Instruction;
@@ -210,7 +203,7 @@ package body A0 is
     if flags_Z then
       valid := cmdFlagEQ;
     else
-      valid := (cmdFlagLT = flags_LT);  
+      valid := (cmdFlagLT = flags_LT);  -- #TODO: don't use cmdFlagP, need to use it probably?
     end if;
     
     return not valid;
@@ -313,7 +306,6 @@ package body A0 is
     
    -- get final result   
    --
- 
    case cmdX.code(3 downto 2) is     
        when "00"   => resLow  <= rShift;
        when "01"   => resLow  <= std_logic_vector(rAdd(31 downto 0));
@@ -395,10 +387,10 @@ BEGIN
   clock : process   
   
   file     file_PROG : text; -- file there the program is located 
-  variable v_ILINE  : line;  
-  variable v_CMD    : WORD; 
-  variable i        : integer := 0; 
-  variable testId   : integer := 0;  
+  variable v_ILINE   : line;  
+  variable v_CMD     : WORD; 
+  variable i         : integer := 0; 
+  variable testId    : integer := 0;  
   
   constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
                                    2  => "../../ASM/bin/out002.txt",
@@ -515,15 +507,14 @@ BEGIN
    ---------------------------------------  core arch begin --------------------------------------------------------
    -----------------------------------------------------------------------------------------------------------------   
   
-   ---- instruction fetch and pipeline basics ----
+   ------------------------------ instruction fetch and pipeline basics ------------------------------
    
    rawCmdF := program(ip);
    cmdF    := ToInstruction(rawCmdF);
    
    -- this is the only case for 5-stage RISC processor when we must bubble, because Mem operations have 2 clock latency
-   -- load R0, [R1+2] --> F D X M W    | bypass after M to X
+   -- load R0, [R1+2] --> F D X M W      | bypass after M to X
    -- add R3, R0, R1  -->   F F D X M W  |
-   -- меня немного смущает использование cmdF сразу после выборки из памяти, насколько это эффективно? М.б. лучше перенести на D стадию
    --
    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
    bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow;
@@ -551,10 +542,10 @@ BEGIN
    
    afterM <= afterX; -- from M to W
    
-   ---- instruction fetch and pipeline basics ----   
+   ------------------------------ instruction fetch and pipeline basics ------------------------------   
    
    
-   ---- register fetch ----
+   ------------------------------ register fetch ------------------------------
    
    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
      afterD.op1 <= afterX.res; 
@@ -580,13 +571,13 @@ BEGIN
      
    end if;
    
-   ---- register fetch ----
+   ------------------------------ register fetch ------------------------------
    
    
    ------------------------------ execution stage ------------------------------
      
    
-   -------------------------- bypassing ----------------------------   
+   ------------------------------ bypassing ------------------------------ 
    if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
      xA := afterX.res;
    elsif afterM.reg0 = afterD.reg1 and afterM.we then -- bypass result from M to op1
@@ -612,7 +603,7 @@ BEGIN
      end if;
      
    end if;
-   -------------------------- bypassing ----------------------------
+   ------------------------------ bypassing ------------------------------
     
    ALUIntOperation(afterD, xA, xB, 
                    carryOut, flags_Z, flags_LT,
@@ -620,15 +611,13 @@ BEGIN
                    resHigh => highValue,
                    addOut  => afterX.op2);
   
-  
-
-   ---- control unit ----  
+   ------------------------------ control unit ------------------------------  
    if bubble then
      ip <= ip;
    elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
 
      if afterD.code(2 downto 0) = C_JMP  then
-       ip <= to_uint(xB);          -- JMP, Jummp (absolute addr)
+       ip <= to_uint(xB);          -- JMP, Jump Absolute Addr
      else
        ip <= to_uint(xB) + ip - 2; -- JRA, Jump Relative Addr
      end if;
@@ -636,12 +625,9 @@ BEGIN
    else
      ip <= ip+1;
    end if;    
-   ---- control unit ---- 
- 
-   ------------------------------ execution stage ------------------------------
+   ------------------------------ control unit ------------------------------ 
    
-   
-   ---- memory stage ----                              no bypassing from M to M
+   ------------------------------ memory stage ---- no bypassing from M to M
   
    if afterX.itype = INSTR_MEM and not afterX.invalid then    
      
@@ -662,20 +648,17 @@ BEGIN
      afterM.res <= afterX.res;   
    end if;
    
-   ---- memory stage ----
+   ------------------------------ memory stage ------------------------------
    
    
-   ---- write back   ----   
+   ------------------------------ write back ------------------------------   
    if afterM.we and not afterM.invalid then
      regs(afterM.reg0) <= afterM.res;  
    end if;
-   ---- write back   ----
+   ------------------------------ write back ------------------------------
    
-   -----------------------------------------------------------------------------------------------------------------
-   ---------------------------------------- core arch end ----------------------------------------------------------
-   -----------------------------------------------------------------------------------------------------------------
    
-    end if;
+   end if; -- end of rising_edge(clk)
    
   end process main;
  

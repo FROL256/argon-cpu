@@ -381,8 +381,27 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal halt : boolean := false; 
   
+  COMPONENT A1_MMU IS
+    PORT(   
+      clock   : in STD_LOGIC;  
+      reset   : in STD_LOGIC;
+      optype  : in STD_LOGIC_VECTOR(1 downto 0);
+      addr    : in integer;
+      input   : in  STD_LOGIC_VECTOR (31 downto 0);
+      output  : out STD_LOGIC_VECTOR (31 downto 0);
+      oready  : out STD_LOGIC
+    );
+  END COMPONENT;
+
 BEGIN 
   
+  --MUU: A1_MMU PORT MAP (clock  => clk, reset => rst, 
+                 --       optype => afterX.code(1 downto 0), 
+                 --       addr   => to_uint(afterX.op2), 
+                 --       input  => afterX.op1,
+                 --       output => afterM.res,
+                 --       oready => memReady);
+
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
   
@@ -479,7 +498,8 @@ BEGIN
   -------------- fetch input ---------------- 
   
   -------------- mem input ----------------
-  variable address : integer := 0;  
+  variable address      : integer := 0;  
+  variable instInMemTmp : STD_LOGIC_VECTOR(1 downto 0) := "00";
   -------------- mem input ----------------
   
   -------------- alu input and internal ----------------
@@ -487,7 +507,7 @@ BEGIN
   variable xB : WORD := x"00000000"; -- second op 
     
   variable invalidateNow : boolean := false;
-  variable haltNow : boolean := false;
+  variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
   
   begin           
@@ -631,9 +651,10 @@ BEGIN
   
    if afterX.itype = INSTR_MEM and not afterX.invalid then    
      
-     address := to_uint(afterX.op2);     
+     instInMemTmp := afterX.code(1 downto 0);    
+     address      := to_uint(afterX.op2);     
      
-     case afterX.code(1 downto 0) is
+     case instInMemTmp is
        when M_LOAD  =>   afterM.res      <= memory(address);   
        
        when M_STORE =>   memory(address) <= afterX.op1;      
@@ -641,7 +662,7 @@ BEGIN
        when M_SWAP  =>   afterM.res      <= memory(address);   
                          memory(address) <= afterX.op1;
                    
-       when others  =>   afterM.res      <= x"00000000"; 
+       when others  =>   afterM.res      <= afterX.res; 
      end case;
     
    else

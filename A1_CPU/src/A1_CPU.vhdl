@@ -10,6 +10,7 @@ package A0 is
   subtype BYTE is STD_LOGIC_VECTOR (7 downto 0);
   
   subtype REGT is integer range 0 to 15;
+  subtype INSTR_MEM_TYPE is STD_LOGIC_VECTOR (1 downto 0);
   
   type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
   type L1_MEMORY        is array (0 to 1023) of WORD; 
@@ -121,6 +122,9 @@ package A0 is
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
+  function GetMemOp(cmdX : Instruction)   return INSTR_MEM_TYPE;
+  function GetMemAddr(cmdX : Instruction) return integer;
+  
   procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
@@ -160,6 +164,24 @@ package body A0 is
   return cmd;   
   
   end ToInstruction;
+  
+  function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE is
+  begin 
+   if cmdX.itype = INSTR_MEM and not cmdX.invalid then 
+     return cmdX.code(1 downto 0);    
+   else
+     return M_NOP;     
+   end if;
+  end GetMemOp;
+
+  function GetMemAddr(cmdX : Instruction) return integer is
+  begin
+   if cmdX.itype = INSTR_MEM and not cmdX.invalid then 
+     return to_sint(cmdX.op2);    
+   else
+     return 0;     
+   end if;
+  end GetMemAddr;
 
   function ToStdLogic(L: BOOLEAN) return std_logic is
   begin
@@ -379,7 +401,8 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal carryOut  : std_logic := '0';  
   signal highValue : WORD := x"00000000";   
   
-  signal halt : boolean := false; 
+  signal halt      : boolean   := false;
+  signal memReady  : std_logic := '0';  
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -395,12 +418,14 @@ ARCHITECTURE RTL OF A1_CPU IS
 
 BEGIN 
   
-  --MUU: A1_MMU PORT MAP (clock  => clk, reset => rst, 
-                 --       optype => afterX.code(1 downto 0), 
-                 --       addr   => to_uint(afterX.op2), 
-                 --       input  => afterX.op1,
-                 --       output => afterM.res,
-                 --       oready => memReady);
+  
+  -- MUU: A1_MMU PORT MAP (clock  => clk, reset => rst, 
+  --                       optype => GetMemOp  (afterX),  
+  --                       addr   => GetMemAddr(afterX), 
+  --                       input  => afterX.op1,
+  --                       output => afterM.res,
+  --                       oready => memReady
+  --                      );
 
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   

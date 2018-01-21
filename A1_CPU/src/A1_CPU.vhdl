@@ -130,8 +130,7 @@ package A0 is
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
                             signal resLow   : inout WORD;
-                            signal resHigh  : inout WORD;
-                            signal addOut   : out WORD);
+                            signal resHigh  : inout WORD);
 
 end A0;
 
@@ -239,8 +238,7 @@ package body A0 is
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
                             signal resLow   : inout WORD;
-                            signal resHigh  : inout WORD;
-                            signal addOut   : out WORD) is
+                            signal resHigh  : inout WORD) is
    
   variable yB     : WORD                  := x"00000000";     -- second op passed to adder
   variable rShift : WORD                  := (others => '0'); -- result of shift ops group
@@ -338,8 +336,6 @@ package body A0 is
   else
     resLow <= x"00000000";
   end if;
- 
-  addOut <= std_logic_vector(rAdd(31 downto 0));
      
   end ALUIntOperation; 
 
@@ -385,10 +381,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal afterF : Instruction := CMD_NOP; 
   signal afterD : Instruction := CMD_NOP; 
   signal afterX : Instruction := CMD_NOP;
-  signal afterM : Instruction := CMD_NOP;
   
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
-  signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
+  --signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
   signal imm_value   : WORD := x"00000000";
@@ -396,9 +391,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal flags_Z  : boolean := false; -- Zero
   signal flags_LT : boolean := false; -- Less Than
-  signal flags_P  : boolean := false; -- Custom Predicate 
+  signal flags_P  : boolean := false; -- Custom Predicate  
+  signal carryOut : std_logic := '0';  
   
-  signal carryOut  : std_logic := '0';  
   signal highValue : WORD := x"00000000";   
   
   signal halt      : boolean   := false;
@@ -533,11 +528,6 @@ BEGIN
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
-  -------------- mem input ----------------
-  variable address      : integer := 0;  
-  variable instInMemTmp : STD_LOGIC_VECTOR(1 downto 0) := "00";
-  -------------- mem input ----------------
-  
   -------------- alu input and internal ----------------
   variable xA : WORD := x"00000000"; -- first op
   variable xB : WORD := x"00000000"; -- second op 
@@ -554,7 +544,6 @@ BEGIN
      afterF <= CMD_NOP; 
      afterD <= CMD_NOP; 
      afterX <= CMD_NOP; 
-     afterM <= CMD_NOP; 
      halt   <= false;
      
    elsif rising_edge(clk) then     
@@ -596,39 +585,32 @@ BEGIN
      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
    end if;
    
-   afterM <= afterX; -- from M to W
-   
    ------------------------------ instruction fetch and pipeline basics ------------------------------   
    
    
-   ------------------------------ register fetch ------------------------------
+   ------------------------------ register fetch and bypassing from X to D ---------------------------
    
    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
      afterD.op1 <= afterX.res; 
-   elsif afterM.reg0 = afterF.reg1 and afterM.we then  -- bypass result from M to op1
-     afterD.op1 <= afterM.res; 
    else  
      afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
    end if; 
    
    imm_value    <= rawCmdF;
    
-   if afterF.imm then                                    -- read from instruction memory and ignore bypassing if commad is immediate
+   if afterF.imm then                                    -- read from instruction memory and ignore bypassing if command is immediate
      afterD.op2 <= rawCmdF; 
    else       
      
      if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
        afterD.op2 <= afterX.res; 
-     elsif afterM.reg0 = afterF.reg2 and afterM.we then  -- bypass result from M to op1
-       afterD.op2 <= afterM.res;
      else 
        afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
      end if;    
      
    end if;
    
-   ------------------------------ register fetch ------------------------------
-   
+   ------------------------------ register fetch and bypassing from X to D ----------------------------
    
    ------------------------------ execution stage ------------------------------
      
@@ -636,16 +618,12 @@ BEGIN
    ------------------------------ bypassing ------------------------------ 
    if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
      xA := afterX.res;
-   elsif afterM.reg0 = afterD.reg1 and afterM.we then -- bypass result from M to op1
-     xA := afterM.res; 
    else 
      xA := afterD.op1;
    end if;
      
    if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
      xB := afterX.res;
-   elsif afterM.reg0 = afterD.reg2 and not afterD.imm and afterM.we then   -- bypass result from M to op2 and ignore bypassing second op for immediate commands
-     xB := afterM.res; 
    else 
      xB := afterD.op2;
    end if;    
@@ -664,8 +642,7 @@ BEGIN
    ALUIntOperation(afterD, xA, xB, 
                    carryOut, flags_Z, flags_LT,
                    resLow  => afterX.res,
-                   resHigh => highValue,
-                   addOut  => afterX.op2);
+                   resHigh => highValue);
   
    ------------------------------ control unit ------------------------------  
    if bubble then
@@ -683,34 +660,11 @@ BEGIN
    end if;    
    ------------------------------ control unit ------------------------------ 
    
-   ------------------------------ memory stage ---- no bypassing from M to M
-  
-   if afterX.itype = INSTR_MEM and not afterX.invalid then    
-     
-     instInMemTmp := afterX.code(1 downto 0);    
-     address      := to_uint(afterX.op2);     
-     
-     case instInMemTmp is
-       when M_LOAD  =>   afterM.res      <= memory(address);   
-       
-       when M_STORE =>   memory(address) <= afterX.op1;      
-       
-       when M_SWAP  =>   afterM.res      <= memory(address);   
-                         memory(address) <= afterX.op1;
-                   
-       when others  =>   afterM.res      <= afterX.res; 
-     end case;
-    
-   else
-     afterM.res <= afterX.res;   
-   end if;
-   
-   ------------------------------ memory stage ------------------------------
    
    
    ------------------------------ write back ------------------------------   
-   if afterM.we and not afterM.invalid then
-     regs(afterM.reg0) <= afterM.res;  
+   if afterX.we and not afterX.invalid then
+     regs(afterX.reg0) <= afterX.res;  
    end if;
    ------------------------------ write back ------------------------------
    

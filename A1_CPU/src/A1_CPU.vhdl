@@ -418,7 +418,7 @@ ARCHITECTURE RTL OF A1_CPU IS
 
 BEGIN 
   
-  
+  -- edit
   -- MUU: A1_MMU PORT MAP (clock  => clk, reset => rst, 
   --                       optype => GetMemOp  (afterX),  
   --                       addr   => GetMemAddr(afterX), 

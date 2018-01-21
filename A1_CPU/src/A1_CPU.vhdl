@@ -129,13 +129,13 @@ package A0 is
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
-                                   resLow   : inout WORD;
+                            signal resLow   : inout WORD;
                             signal resHigh  : inout WORD);
 
   procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
                          addr   : in integer; 
                          input  : in WORD; 
-                         output : out WORD;
+                         signal output : out WORD;
                          signal memory : inout L1_MEMORY);
 end A0;
 
@@ -242,7 +242,7 @@ package body A0 is
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
-                                   resLow   : inout WORD;
+                            signal resLow   : inout WORD;
                             signal resHigh  : inout WORD) is
    
   variable yB     : WORD                  := x"00000000";     -- second op passed to adder
@@ -332,14 +332,14 @@ package body A0 is
    -- get final result   
    --
    case cmdX.code(3 downto 2) is     
-       when "00"   => resLow := rShift;
-       when "01"   => resLow := std_logic_vector(rAdd(31 downto 0));
-       when "10"   => resLow := rLog;
-       when others => resLow := rMulc;
+       when "00"   => resLow <= rShift;
+       when "01"   => resLow <= std_logic_vector(rAdd(31 downto 0));
+       when "10"   => resLow <= rLog;
+       when others => resLow <= rMulc;
    end case;   
    -------------------------- alu core ----------------------------- 
   else
-    resLow := x"00000000";
+    resLow <= x"00000000";
   end if;
      
   end ALUIntOperation; 
@@ -347,18 +347,18 @@ package body A0 is
   procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
                          addr   : in  integer; 
                          input  : in  WORD; 
-                         output : out WORD;
+                         signal output : out WORD;
                          signal memory : inout L1_MEMORY) is 
   begin 
   case optype is
-       when M_LOAD  => output       := memory(addr);   
+       when M_LOAD  => output       <= memory(addr);   
 
        when M_STORE => memory(addr) <= input;      
        
-       when M_SWAP  => output       := memory(addr);   
+       when M_SWAP  => output       <= memory(addr);   
                        memory(addr) <= input;
                    
-       when others  => output       := input; 
+       when others  => output       <= input; 
      end case;
   end MemOperation;
   
@@ -416,7 +416,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal flags_P  : boolean := false; -- Custom Predicate  
   signal carryOut : std_logic := '0';  
   
-  signal highValue : WORD := x"00000000";   
+  signal highValue : WORD := x"00000000";  
+  signal aluOut    : WORD := x"00000000"; -- ALU result
+  signal memOut    : WORD := x"00000000"; -- MEM result  
   
   signal halt      : boolean   := false;
   signal memReady  : std_logic := '0';  
@@ -551,10 +553,9 @@ BEGIN
   -------------- fetch input ---------------- 
   
   -------------- alu input and internal ----------------
-  variable xA     : WORD := x"00000000"; -- first op
-  variable xB     : WORD := x"00000000"; -- second op 
-  variable aluOut : WORD := x"00000000"; -- ALU result
-  variable memOut : WORD := x"00000000"; -- MEM result
+  variable xA   : WORD := x"00000000"; -- first op
+  variable xB   : WORD := x"00000000"; -- second op 
+  variable xRes : WORD := x"00000000"; -- ALU or MEM result; afterX.res analogue
    
   variable invalidateNow : boolean := false;
   variable haltNow       : boolean := false;
@@ -577,21 +578,13 @@ BEGIN
      
    elsif rising_edge(clk) then     
   
-   -----------------------------------------------------------------------------------------------------------------
-   ---------------------------------------  core arch begin --------------------------------------------------------
-   -----------------------------------------------------------------------------------------------------------------   
-  
    ------------------------------ instruction fetch and pipeline basics ------------------------------
    
    rawCmdF := program(ip);
    cmdF    := ToInstruction(rawCmdF);
    
-   -- this is the only case for 5-stage RISC processor when we must bubble, because Mem operations have 2 clock latency
-   -- load R0, [R1+2] --> F D X M W      | bypass after M to X
-   -- add R3, R0, R1  -->   F F D X M W  |
-   --
    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow;
+   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette, i'ts for classic 5 stage MIPS
    
    halt <= haltNow;
 
@@ -601,8 +594,8 @@ BEGIN
      afterF <= cmdF;
    end if;
    
-   -- 0 1 2 3 4
-   -- F D X M W
+   -- 0 1 2 3
+   -- F D X W
    --
    afterD <= afterF; 
    afterX <= afterD; -- here we have to deal with flags values and predicate commands
@@ -614,13 +607,16 @@ BEGIN
      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
    end if;
    
-   ------------------------------ instruction fetch and pipeline basics ------------------------------   
-   
+   if afterX.itype = INSTR_ALUI then
+     xRes := aluOut;
+   else
+     xRes := memOut;
+   end if; 
    
    ------------------------------ register fetch and bypassing from X to D ---------------------------
    
    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
-     afterD.op1 <= afterX.res; 
+     afterD.op1 <= xRes; 
    else  
      afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
    end if; 
@@ -632,7 +628,7 @@ BEGIN
    else       
      
      if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
-       afterD.op2 <= afterX.res; 
+       afterD.op2 <= xRes; 
      else 
        afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
      end if;    
@@ -646,13 +642,13 @@ BEGIN
    
    ------------------------------ bypassing ------------------------------ 
    if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
-     xB := afterX.res;
+     xB := xRes;
    else 
      xB := afterD.op2;
    end if;    
    
    if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
-     xA := afterX.res;
+     xA := xRes;
    else 
      xA := afterD.op1;
    end if;
@@ -687,11 +683,6 @@ BEGIN
                 output => memOut,
                 memory => memory);
    
-   if afterD.itype = INSTR_ALUI then
-     afterX.res <= aluOut;
-   else
-     afterX.res <= memOut;
-   end if;
   
    ------------------------------ control unit ------------------------------  
    if bubble then
@@ -709,11 +700,9 @@ BEGIN
    end if;    
    ------------------------------ control unit ------------------------------ 
    
-   
-   
    ------------------------------ write back ------------------------------   
    if afterX.we and not afterX.invalid then
-     regs(afterX.reg0) <= afterX.res;  
+     regs(afterX.reg0) <= xRes;  
    end if;
    ------------------------------ write back ------------------------------
    

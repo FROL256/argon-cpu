@@ -498,8 +498,8 @@ BEGIN
      wait for 10 ns; 
      clk  <= not clk;
      i := i+1;
-     if halt then               -- run 10 more cycles, than break.
-       for i in 0 to 10 loop
+     if halt then               -- run 7 more cycles, than break (i.e. 7+3 = 10 cycles to complete halt of CPU before we check regs)
+       for i in 0 to 7 loop
          wait for 10 ns; 
          clk  <= not clk;
        end loop;

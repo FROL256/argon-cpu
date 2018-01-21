@@ -434,6 +434,7 @@ BEGIN
   variable v_ILINE   : line;  
   variable v_CMD     : WORD; 
   variable i         : integer := 0; 
+  variable j         : integer := 0; 
   variable testId    : integer := 0;  
   
   constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
@@ -497,6 +498,14 @@ BEGIN
      wait for 10 ns; 
      clk  <= not clk;
      i := i+1;
+     if halt then               -- run 10 more cycles, than break.
+       for i in 0 to 10 loop
+         wait for 10 ns; 
+         clk  <= not clk;
+       end loop;
+       exit;
+     end if;
+     
    end loop;   
 
    ------------------------------------ finish                  ------------------------------------------------- 
@@ -506,6 +515,8 @@ BEGIN
    else
      report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = " & integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
    end if;
+   
+   exit;
    
    end loop; 
    

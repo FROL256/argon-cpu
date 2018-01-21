@@ -10,7 +10,8 @@ package A0 is
   subtype BYTE is STD_LOGIC_VECTOR (7 downto 0);
   
   subtype REGT is integer range 0 to 15;
-  subtype INSTR_MEM_TYPE is STD_LOGIC_VECTOR (1 downto 0);
+  subtype INSTR_MEM_TYPE   is STD_LOGIC_VECTOR (1 downto 0);
+  subtype WHOLE_INSTR_CODE is STD_LOGIC_VECTOR (5 downto 0);
   
   type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
   type L1_MEMORY        is array (0 to 1023) of WORD; 
@@ -48,7 +49,21 @@ package A0 is
   constant C_JRA   : STD_LOGIC_VECTOR(2 downto 0) := "100";
   constant C_HLT   : STD_LOGIC_VECTOR(2 downto 0) := "010";
   constant C_INT   : STD_LOGIC_VECTOR(2 downto 0) := "011";
-              
+  
+  ------- #DEBUG: THIS IS FOR DEBUG NEEDS ONLY, TO SEE COMMAND NAME IN DEBUGGER ------ !!!
+  
+  type DEBUG_COMMAND is (DA_NOP, DA_SHL, DA_SHR, DA_MOV, 
+                         DA_ADD, DA_ADC, DA_SUB, DA_SBC,
+                         DA_AND, DA_OR,  DA_NOT, DA_XOR,
+                         DA_MFH, DA_MUL, DA_NN1, DA_NN2,
+                         DM_NOP, DM_LOAD, DM_STORE, DM_SWAP,
+                         DC_NOP, DC_JMP,  DC_JRA, DC_HLT, DC_INT);
+                          
+  function decodeDebug(code : in WHOLE_INSTR_CODE) return DEBUG_COMMAND;
+  
+  ------- #DEBUG: THIS IS FOR DEBUG NEEDS ONLY, TO SEE COMMAND NAME IN DEBUGGER ------ !!!
+  
+  
   type Flags is record     
     N  : boolean; -- if set, invert flags (Z,LT,P)
     Z  : boolean; -- Zero
@@ -98,13 +113,14 @@ package A0 is
   -- OPCODE = "00" & CODE where "00" is instruction type
   --
   type Instruction is record
+    cmd     : DEBUG_COMMAND;                 -- #DEBUG: THIS IS ONLY FOR DEBUG NEEDS!!!
+    reg0    : REGT;
+    reg1    : REGT;
+    reg2    : REGT; 
     imm     : boolean;                       -- immediate flag          
     we      : boolean;                       -- write enable
     itype   : STD_LOGIC_VECTOR (1 downto 0); -- instruction type  
-    code    : STD_LOGIC_VECTOR (3 downto 0); -- instruction op-code 
-    reg0    : REGT;
-    reg1    : REGT;
-    reg2    : REGT;   
+    code    : STD_LOGIC_VECTOR (3 downto 0); -- instruction op-code   
     memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions 
     flags   : Flags;                         -- predicates
     invalid : boolean;                       -- used later if instruction marked invalid due to predicates or cache miss
@@ -115,7 +131,8 @@ package A0 is
   
   constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, 
                                      memOffs => x"00", flags => (others => false), invalid => false,
-                                     op1 => x"00000000", op2 => x"00000000", res => x"00000000");
+                                     op1 => x"00000000", op2 => x"00000000", res => x"00000000",
+                                     cmd => DA_NOP);
   
   function ToInstruction(data : WORD) return Instruction; 
   function ToStdLogic(L: BOOLEAN) return std_logic; 
@@ -140,6 +157,46 @@ package A0 is
 end A0;
 
 package body A0 is
+
+  function decodeDebug(code : in WHOLE_INSTR_CODE) return DEBUG_COMMAND is 
+  begin 
+  
+  case code is
+    when "000000" => return DA_NOP; 
+    when "000001" => return DA_SHL;   
+    when "000010" => return DA_SHR;
+    when "000011" => return DA_MOV;
+    
+    when "000100" => return DA_ADD;
+    when "000101" => return DA_ADC;
+    when "000110" => return DA_SUB;
+    when "000111" => return DA_SBC;
+    
+    when "001000" => return DA_AND;
+    when "001001" => return DA_OR;
+    when "001010" => return DA_NOT;
+    when "001011" => return DA_XOR;
+    
+    when "001100" => return DA_MFH;
+    when "001111" => return DA_MUL;
+    when "001101" => return DA_NN1;
+    when "001110" => return DA_NN2;
+    
+    when "100000" => return DM_NOP;
+    when "100001" => return DM_LOAD;
+    when "100010" => return DM_STORE;
+    when "100011" => return DM_SWAP; 
+    
+    when "010000" => return DC_NOP;
+    when "010001" => return DC_JMP;
+    when "010100" => return DC_JRA;
+    when "010010" => return DC_HLT;
+    when "010011" => return DC_INT;
+    
+    when others   => return DA_NOP; 
+   end case;  
+  
+  end decodeDebug;
   
   function ToInstruction(data : WORD) return Instruction is
     variable cmd : Instruction;
@@ -164,7 +221,8 @@ package body A0 is
     cmd.flags.Z  := ToBoolean(data(2));
     cmd.flags.LT := ToBoolean(data(1));
     cmd.flags.P  := ToBoolean(data(0));
-  
+ 
+    cmd.cmd := decodeDebug(data(29 downto 24));
   return cmd;   
   
   end ToInstruction;
@@ -584,7 +642,7 @@ BEGIN
    cmdF    := ToInstruction(rawCmdF);
    
    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette, i'ts for classic 5 stage MIPS
+   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette
    
    halt <= haltNow;
 
@@ -598,8 +656,10 @@ BEGIN
    -- F D X W
    --
    afterD <= afterF; 
-   afterX <= afterD; -- here we have to deal with flags values and predicate commands
    
+   -- here we have to deal with flags values and predicate commands
+   --
+   afterX <= afterD; 
    invalidateNow := false;
    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
@@ -607,6 +667,8 @@ BEGIN
      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
    end if;
    
+   -- multiplexer to select result from different pipes
+   --
    if afterX.itype = INSTR_ALUI then
      xRes := aluOut;
    else
@@ -637,10 +699,8 @@ BEGIN
    
    ------------------------------ register fetch and bypassing from X to D ----------------------------
    
-   ------------------------------ execution stage ------------------------------
-     
-   
-   ------------------------------ bypassing ------------------------------ 
+
+   ------------------------------ bypassing from X to X ------------------------------ 
    if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
      xB := xRes;
    else 
@@ -662,12 +722,14 @@ BEGIN
      end if;
      
    end if;
-   ------------------------------ bypassing ------------------------------
+   ------------------------------ bypassing from X to X ------------------------------
     
    ALUIntOperation(afterD, xA, xB, 
                    carryOut, flags_Z, flags_LT,
                    resLow  => aluOut,
                    resHigh => highValue);
+  
+
   
    if afterD.itype = INSTR_MEM then
     instInMemTmp := afterD.code(1 downto 0);    

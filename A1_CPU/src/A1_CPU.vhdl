@@ -129,9 +129,14 @@ package A0 is
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
-                            signal resLow   : inout WORD;
+                                   resLow   : inout WORD;
                             signal resHigh  : inout WORD);
 
+  procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
+                         addr   : in integer; 
+                         input  : in WORD; 
+                         output : out WORD;
+                         signal memory : inout L1_MEMORY);
 end A0;
 
 package body A0 is
@@ -237,7 +242,7 @@ package body A0 is
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
-                            signal resLow   : inout WORD;
+                                   resLow   : inout WORD;
                             signal resHigh  : inout WORD) is
    
   variable yB     : WORD                  := x"00000000";     -- second op passed to adder
@@ -278,7 +283,7 @@ package body A0 is
       flags_Z  <= (zero     = '1');
       flags_LT <= (rAdd(31) = '1');  -- sign bit
     else
-      flags_Z   <= flags_Z;
+      flags_Z  <= flags_Z;
       flags_LT <= flags_LT;
     end if;
     
@@ -327,18 +332,35 @@ package body A0 is
    -- get final result   
    --
    case cmdX.code(3 downto 2) is     
-       when "00"   => resLow  <= rShift;
-       when "01"   => resLow  <= std_logic_vector(rAdd(31 downto 0));
-       when "10"   => resLow  <= rLog;
-       when others => resLow  <= rMulc;
+       when "00"   => resLow := rShift;
+       when "01"   => resLow := std_logic_vector(rAdd(31 downto 0));
+       when "10"   => resLow := rLog;
+       when others => resLow := rMulc;
    end case;   
    -------------------------- alu core ----------------------------- 
   else
-    resLow <= x"00000000";
+    resLow := x"00000000";
   end if;
      
   end ALUIntOperation; 
 
+  procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
+                         addr   : in  integer; 
+                         input  : in  WORD; 
+                         output : out WORD;
+                         signal memory : inout L1_MEMORY) is 
+  begin 
+  case optype is
+       when M_LOAD  => output       := memory(addr);   
+
+       when M_STORE => memory(addr) <= input;      
+       
+       when M_SWAP  => output       := memory(addr);   
+                       memory(addr) <= input;
+                   
+       when others  => output       := input; 
+     end case;
+  end MemOperation;
   
 end A0;
 
@@ -383,7 +405,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal afterX : Instruction := CMD_NOP;
   
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
-  --signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
+  signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
   signal imm_value   : WORD := x"00000000";
@@ -490,12 +512,12 @@ BEGIN
    
    i := 0;
    while i < 1000 loop     
-     wait for 10 ns; 
+     wait for 5 ns; 
      clk  <= not clk;
      i := i+1;
-     if halt then               -- run 7 more cycles, than break (i.e. 7+3 = 10 cycles to complete halt of CPU before we check regs)
-       for i in 0 to 7 loop
-         wait for 10 ns; 
+     if halt then
+       for i in 0 to 6 loop -- you will need to withdraw 35 ns (7x5=35) from the simulation time to get real execution time.
+         wait for 5 ns; 
          clk  <= not clk;
        end loop;
        exit;
@@ -511,7 +533,7 @@ BEGIN
      report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = " & integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
    end if;
    
-   exit;
+   --exit;
    
    end loop; 
    
@@ -529,12 +551,19 @@ BEGIN
   -------------- fetch input ---------------- 
   
   -------------- alu input and internal ----------------
-  variable xA : WORD := x"00000000"; -- first op
-  variable xB : WORD := x"00000000"; -- second op 
-    
+  variable xA     : WORD := x"00000000"; -- first op
+  variable xB     : WORD := x"00000000"; -- second op 
+  variable aluOut : WORD := x"00000000"; -- ALU result
+  variable memOut : WORD := x"00000000"; -- MEM result
+   
   variable invalidateNow : boolean := false;
   variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
+  
+  -------------- mem input ----------------
+  variable address      : integer := 0;  
+  variable instInMemTmp : STD_LOGIC_VECTOR(1 downto 0) := "00";
+  -------------- mem input ----------------
   
   begin           
 
@@ -616,17 +645,17 @@ BEGIN
      
    
    ------------------------------ bypassing ------------------------------ 
-   if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
-     xA := afterX.res;
-   else 
-     xA := afterD.op1;
-   end if;
-     
    if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
      xB := afterX.res;
    else 
      xB := afterD.op2;
    end if;    
+   
+   if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
+     xA := afterX.res;
+   else 
+     xA := afterD.op1;
+   end if;
    
    if (afterD.itype = INSTR_MEM) then  -- alter second op to compute address if mem istruction occured  
        
@@ -641,8 +670,28 @@ BEGIN
     
    ALUIntOperation(afterD, xA, xB, 
                    carryOut, flags_Z, flags_LT,
-                   resLow  => afterX.res,
+                   resLow  => aluOut,
                    resHigh => highValue);
+  
+   if afterD.itype = INSTR_MEM then
+    instInMemTmp := afterD.code(1 downto 0);    
+    address      := to_sint(xA) + to_sint(xB); -- + some thing ???  
+   else
+    instInMemTmp := M_NOP;
+    address      := 0;
+   end if;
+   
+   MemOperation(optype => instInMemTmp, 
+                addr   => address, 
+                input  => afterD.op1, 
+                output => memOut,
+                memory => memory);
+   
+   if afterD.itype = INSTR_ALUI then
+     afterX.res <= aluOut;
+   else
+     afterX.res <= memOut;
+   end if;
   
    ------------------------------ control unit ------------------------------  
    if bubble then

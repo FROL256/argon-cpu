@@ -113,17 +113,17 @@ package A0 is
   -- OPCODE = "00" & CODE where "00" is instruction type
   --
   type Instruction is record
-    cmd     : DEBUG_COMMAND;                 -- #DEBUG: THIS IS ONLY FOR DEBUG NEEDS!!!
+    cmd     : DEBUG_COMMAND;                -- #DEBUG: THIS IS ONLY FOR DEBUG NEEDS!!!
     reg0    : REGT;
     reg1    : REGT;
     reg2    : REGT; 
-    imm     : boolean;                       -- immediate flag          
-    we      : boolean;                       -- write enable
-    itype   : STD_LOGIC_VECTOR (1 downto 0); -- instruction type  
-    code    : STD_LOGIC_VECTOR (3 downto 0); -- instruction op-code   
-    memOffs : STD_LOGIC_VECTOR(7 downto 0);  -- used only by memory instructions 
-    flags   : Flags;                         -- predicates
-    invalid : boolean;                       -- used later if instruction marked invalid due to predicates or cache miss
+    imm     : boolean;                      -- immediate flag          
+    we      : boolean;                      -- write enable
+    itype   : STD_LOGIC_VECTOR(1 downto 0); -- instruction type  
+    code    : STD_LOGIC_VECTOR(3 downto 0); -- instruction op-code   
+    memOffs : STD_LOGIC_VECTOR(7 downto 0); -- used only by memory instructions 
+    flags   : Flags;                        -- predicates
+    invalid : boolean;                      -- used later if instruction marked invalid due to predicates or cache miss
     op1     : WORD;
     op2     : WORD;
     res     : WORD;
@@ -139,8 +139,12 @@ package A0 is
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
+  function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD;
+  function GetOpA(afterD : Instruction; afterX : Instruction; xRes : WORD; imm_value : WORD) return WORD;
+  function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD;
+  
   function GetMemOp(cmdX : Instruction)   return INSTR_MEM_TYPE;
-  function GetMemAddr(cmdX : Instruction) return integer;
+  function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer;
   
   procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
                             signal carryOut : inout std_logic;
@@ -157,7 +161,9 @@ package A0 is
 end A0;
 
 package body A0 is
-
+  
+  ------- #DEBUG: THIS IS FOR DEBUG NEEDS ONLY, TO SEE COMMAND NAME IN DEBUGGER ------ !!!
+  
   function decodeDebug(code : in WHOLE_INSTR_CODE) return DEBUG_COMMAND is 
   begin 
   
@@ -198,6 +204,8 @@ package body A0 is
   
   end decodeDebug;
   
+  ------- #DEBUG: THIS IS FOR DEBUG NEEDS ONLY, TO SEE COMMAND NAME IN DEBUGGER ------ !!!
+  
   function ToInstruction(data : WORD) return Instruction is
     variable cmd : Instruction;
   begin 
@@ -226,6 +234,47 @@ package body A0 is
   return cmd;   
   
   end ToInstruction;
+ 
+  function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD is
+  begin 
+   if afterX.itype = INSTR_ALUI then
+     return aluOut;
+   else
+     return memOut;
+   end if; 
+  end GetRes;
+ 
+  function GetOpA(afterD : Instruction; afterX : Instruction; xRes : WORD; imm_value : WORD) return WORD is
+    variable xA : WORD;
+  begin 
+  
+    if afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
+      xA := xRes;
+    else 
+      xA := afterD.op1;
+    end if;
+    
+    if (afterD.itype = INSTR_MEM) then                -- alter second op to compute address if mem istruction occured       
+      if afterD.imm then 
+        xA := imm_value;
+      else
+        xA := x"000000" & afterD.memOffs(7 downto 0);
+      end if;
+    end if;
+    
+    return xA;
+    
+  end GetOpA;
+  
+  function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD is
+    variable xA : WORD;
+  begin 
+    if afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then  -- bypass result from X to op2 and ignore bypassing second op for immediate commands
+      return xRes;
+    else 
+      return afterD.op2;
+    end if;    
+  end GetOpB;
   
   function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE is
   begin 
@@ -236,13 +285,22 @@ package body A0 is
    end if;
   end GetMemOp;
 
-  function GetMemAddr(cmdX : Instruction) return integer is
+  function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer is
+    variable xA : WORD;
+    variable xB : WORD;
+    variable xR : WORD;
   begin
-   if cmdX.itype = INSTR_MEM and not cmdX.invalid then 
-     return to_sint(cmdX.op2);    
-   else
-     return 0;     
-   end if;
+    
+    xR := GetRes(afterX, aluOut, memOut);
+    xA := GetOpA(afterD, afterX, xR, imm_value);
+    xB := GetOpB(afterD, afterX, xR); 
+    
+    if afterD.itype = INSTR_MEM then   
+      return to_sint(xA) + to_sint(xB); -- + some thing ???  
+    else
+      return 0;
+    end if;
+    
   end GetMemAddr;
 
   function ToStdLogic(L: BOOLEAN) return std_logic is
@@ -495,15 +553,16 @@ ARCHITECTURE RTL OF A1_CPU IS
 
 BEGIN 
   
-  -- edit
-  -- MUU: A1_MMU PORT MAP (clock  => clk, reset => rst, 
-  --                       optype => GetMemOp  (afterX),  
-  --                       addr   => GetMemAddr(afterX), 
+  -- MUU: A1_MMU PORT MAP (clock  => clk, 
+  --                       reset  => rst, 
+  --                       optype => GetMemOp(afterD),  
+  --                       addr   => GetMemAddr(afterD, afterX, imm_value, aluOut, memOut), 
   --                       input  => afterX.op1,
-  --                       output => afterM.res,
+  --                       output => memOut,
   --                       oready => memReady
-  --                      );
-
+  --                      );    
+                       
+                       
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
   
@@ -610,166 +669,120 @@ BEGIN
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
-  -------------- alu input and internal ----------------
-  variable xA   : WORD := x"00000000"; -- first op
-  variable xB   : WORD := x"00000000"; -- second op 
-  variable xRes : WORD := x"00000000"; -- ALU or MEM result; afterX.res analogue
-   
+  -------------- alu input and internal ---------------- 
+  variable xA : WORD;   
+  variable xB : WORD;   
   variable invalidateNow : boolean := false;
   variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
   
-  -------------- mem input ----------------
-  variable address      : integer := 0;  
-  variable instInMemTmp : STD_LOGIC_VECTOR(1 downto 0) := "00";
-  -------------- mem input ----------------
   
   begin           
 
-   if (rst = '1') then
+  if (rst = '1') then
 
-     ip     <= 0;
-     afterF <= CMD_NOP; 
-     afterD <= CMD_NOP; 
-     afterX <= CMD_NOP; 
-     halt   <= false;
+    ip     <= 0;
+    afterF <= CMD_NOP; 
+    afterD <= CMD_NOP; 
+    afterX <= CMD_NOP; 
+    halt   <= false;
      
-   elsif rising_edge(clk) then     
-  
-   ------------------------------ instruction fetch and pipeline basics ------------------------------
+  elsif rising_edge(clk) then     
    
-   rawCmdF := program(ip);
-   cmdF    := ToInstruction(rawCmdF);
-   
-   haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-   bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette
-   
-   halt <= haltNow;
-
-   if bubble or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
-     afterF <= CMD_NOP;
-   else
-     afterF <= cmdF;
-   end if;
-   
-   -- 0 1 2 3
-   -- F D X W
-   --
-   afterD <= afterF; 
-   
-   -- here we have to deal with flags values and predicate commands
-   --
-   afterX <= afterD; 
-   invalidateNow := false;
-   if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
-     invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
-     afterX.invalid <= invalidateNow;
-     afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
-   end if;
-   
-   -- multiplexer to select result from different pipes
-   --
-   if afterX.itype = INSTR_ALUI then
-     xRes := aluOut;
-   else
-     xRes := memOut;
-   end if; 
-   
-   ------------------------------ register fetch and bypassing from X to D ---------------------------
-   
-   if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
-     afterD.op1 <= xRes; 
-   else  
-     afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
-   end if; 
-   
-   imm_value    <= rawCmdF;
-   
-   if afterF.imm then                                    -- read from instruction memory and ignore bypassing if command is immediate
-     afterD.op2 <= rawCmdF; 
-   else       
-     
-     if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
-       afterD.op2 <= xRes; 
-     else 
-       afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
-     end if;    
-     
-   end if;
-   
-   ------------------------------ register fetch and bypassing from X to D ----------------------------
-   
-
-   ------------------------------ bypassing from X to X ------------------------------ 
-   if    afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then   -- bypass result from X to op2 and ignore bypassing second op for immediate commands
-     xB := xRes;
-   else 
-     xB := afterD.op2;
-   end if;    
-   
-   if    afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
-     xA := xRes;
-   else 
-     xA := afterD.op1;
-   end if;
-   
-   if (afterD.itype = INSTR_MEM) then  -- alter second op to compute address if mem istruction occured  
-       
-     if afterD.imm then 
-       xA := imm_value;
-     else
-       xA := x"000000" & afterD.memOffs(7 downto 0);
-     end if;
-     
-   end if;
-   ------------------------------ bypassing from X to X ------------------------------
+    ------------------------------ instruction fetch and pipeline basics ------------------------------   
+    rawCmdF := program(ip);
+    cmdF    := ToInstruction(rawCmdF);
     
-   ALUIntOperation(afterD, xA, xB, 
-                   carryOut, flags_Z, flags_LT,
-                   resLow  => aluOut,
-                   resHigh => highValue);
-  
-
-  
-   if afterD.itype = INSTR_MEM then
-    instInMemTmp := afterD.code(1 downto 0);    
-    address      := to_sint(xA) + to_sint(xB); -- + some thing ???  
-   else
-    instInMemTmp := M_NOP;
-    address      := 0;
-   end if;
+    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
+    bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette
+    
+    halt <= haltNow;
+    
+    if bubble or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
+      afterF <= CMD_NOP;
+    else
+      afterF <= cmdF;
+    end if;
+    
+    -- 0 1 2 3
+    -- F D X W
+    --
+    afterD <= afterF; 
+    
+    -- here we have to deal with flags values and predicate commands
+    --
+    afterX <= afterD; 
+    invalidateNow := false;
+    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
+      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
+      afterX.invalid <= invalidateNow;
+      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
+    end if;
+    
+    ------------------------------ register fetch and bypassing from X to D ---------------------------
+    
+    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
+      afterD.op1 <= GetRes(afterX, aluOut, memOut); 
+    else  
+      afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
+    end if; 
+    
+    imm_value    <= rawCmdF;
+    
+    if afterF.imm then                                    -- read from instruction memory and ignore bypassing if command is immediate
+      afterD.op2 <= rawCmdF; 
+    else       
+      
+      if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
+        afterD.op2 <= GetRes(afterX, aluOut, memOut); 
+      else 
+        afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
+      end if;    
+      
+    end if;
+    
+    ------------------------------ register fetch and bypassing from X to D ----------------------------
+    
+    xA := GetOpA(afterD, afterX, GetRes(afterX, aluOut, memOut), imm_value);
+    xB := GetOpB(afterD, afterX, GetRes(afterX, aluOut, memOut));
+    
+    ------------------------------ bypassing from X to X ------------------------------
+     
+    ALUIntOperation(afterD, xA, xB, 
+                    carryOut, flags_Z, flags_LT,
+                    resLow  => aluOut,
+                    resHigh => highValue);
+    
+    MemOperation(optype => GetMemOp(afterD), 
+                 addr   => GetMemAddr(afterD, afterX, imm_value, aluOut, memOut),
+                 input  => afterD.op1, 
+                 output => memOut,
+                 memory => memory);
+    
+    ------------------------------ control unit ------------------------------  
+    if bubble then
+      ip <= ip;
+    elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
+    
+      if afterD.code(2 downto 0) = C_JMP  then
+        ip <= to_uint(xB);          -- JMP, Jump Absolute Addr
+      else
+        ip <= to_uint(xB) + ip - 2; -- JRA, Jump Relative Addr
+      end if;
+    
+    else
+      ip <= ip+1;
+    end if;    
+    ------------------------------ control unit ------------------------------ 
+    
+    ------------------------------ write back ------------------------------   
+    if afterX.we and not afterX.invalid then
+      regs(afterX.reg0) <= GetRes(afterX, aluOut, memOut);  
+    end if;
+    ------------------------------ write back ------------------------------
    
-   MemOperation(optype => instInMemTmp, 
-                addr   => address, 
-                input  => afterD.op1, 
-                output => memOut,
-                memory => memory);
    
-  
-   ------------------------------ control unit ------------------------------  
-   if bubble then
-     ip <= ip;
-   elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
-
-     if afterD.code(2 downto 0) = C_JMP  then
-       ip <= to_uint(xB);          -- JMP, Jump Absolute Addr
-     else
-       ip <= to_uint(xB) + ip - 2; -- JRA, Jump Relative Addr
-     end if;
-
-   else
-     ip <= ip+1;
-   end if;    
-   ------------------------------ control unit ------------------------------ 
-   
-   ------------------------------ write back ------------------------------   
-   if afterX.we and not afterX.invalid then
-     regs(afterX.reg0) <= xRes;  
-   end if;
-   ------------------------------ write back ------------------------------
-   
-   
-   end if; -- end of rising_edge(clk)
+  end if; -- end of rising_edge(clk)
    
   end process main;
  

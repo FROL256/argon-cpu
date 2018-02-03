@@ -144,7 +144,7 @@ package A0 is
   function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD;
   
   function GetMemOp(cmdX : Instruction)   return INSTR_MEM_TYPE;
-  function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer;
+  --function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer;
   
   procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
                             signal carryOut : inout std_logic;
@@ -154,7 +154,8 @@ package A0 is
                             signal resHigh  : inout WORD);
 
   procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
-                         addr   : in integer; 
+                         addr1  : in WORD;
+                         addr2  : in WORD;                         
                          input  : in WORD; 
                          signal output : out WORD;
                          signal memory : inout L1_MEMORY);
@@ -284,24 +285,6 @@ package body A0 is
      return M_NOP;     
    end if;
   end GetMemOp;
-
-  function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer is
-    variable xA : WORD;
-    variable xB : WORD;
-    variable xR : WORD;
-  begin
-    
-    xR := GetRes(afterX, aluOut, memOut);
-    xA := GetOpA(afterD, afterX, xR, imm_value);
-    xB := GetOpB(afterD, afterX, xR); 
-    
-    if afterD.itype = INSTR_MEM then   
-      return to_sint(xA) + to_sint(xB); -- + some thing ???  
-    else
-      return 0;
-    end if;
-    
-  end GetMemAddr;
 
   function ToStdLogic(L: BOOLEAN) return std_logic is
   begin
@@ -461,21 +444,25 @@ package body A0 is
   end ALUIntOperation; 
 
   procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
-                         addr   : in  integer; 
+                         addr1  : in  WORD; 
+                         addr2  : in  WORD; 
                          input  : in  WORD; 
                          signal output : out WORD;
                          signal memory : inout L1_MEMORY) is 
-  begin 
-  case optype is
-       when M_LOAD  => output       <= memory(addr);   
+                         
+  variable addr : integer := to_sint(addr1) + to_sint(addr2);
 
-       when M_STORE => memory(addr) <= input;      
-       
-       when M_SWAP  => output       <= memory(addr);   
-                       memory(addr) <= input;
-                   
-       when others  => output       <= input; 
-     end case;
+  begin 
+    case optype is
+      when M_LOAD  => output       <= memory(addr);   
+      
+      when M_STORE => memory(addr) <= input;      
+      
+      when M_SWAP  => output       <= memory(addr);   
+                      memory(addr) <= input;
+                  
+      when others  => output       <= input; 
+    end case;
   end MemOperation;
   
 end A0;
@@ -544,7 +531,8 @@ ARCHITECTURE RTL OF A1_CPU IS
       clock   : in STD_LOGIC;  
       reset   : in STD_LOGIC;
       optype  : in STD_LOGIC_VECTOR(1 downto 0);
-      addr    : in integer;
+      addr1   : in WORD;
+      addr2   : in WORD;
       input   : in  STD_LOGIC_VECTOR (31 downto 0);
       output  : out STD_LOGIC_VECTOR (31 downto 0);
       oready  : out STD_LOGIC
@@ -556,13 +544,13 @@ BEGIN
   -- MUU: A1_MMU PORT MAP (clock  => clk, 
   --                       reset  => rst, 
   --                       optype => GetMemOp(afterD),  
-  --                       addr   => GetMemAddr(afterD, afterX, imm_value, aluOut, memOut), 
+  --                       addr1  => GetOpA(afterD, afterX, GetRes(afterX, aluOut, memOut), imm_value),
+  --                       addr2  => GetOpB(afterD, afterX, GetRes(afterX, aluOut, memOut)),                         
   --                       input  => afterX.op1,
   --                       output => memOut,
   --                       oready => memReady
   --                      );    
-                       
-                       
+                                             
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
   
@@ -754,7 +742,8 @@ BEGIN
                     resHigh => highValue);
     
     MemOperation(optype => GetMemOp(afterD), 
-                 addr   => GetMemAddr(afterD, afterX, imm_value, aluOut, memOut),
+                 addr1  => xA,
+                 addr2  => xB,
                  input  => afterD.op1, 
                  output => memOut,
                  memory => memory);

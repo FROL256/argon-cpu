@@ -539,17 +539,25 @@ ARCHITECTURE RTL OF A1_CPU IS
     );
   END COMPONENT;
 
+  signal opA : WORD := x"00000000";  
+  signal opB : WORD := x"00000000";
+  signal opR : WORD := x"00000000";
+  
 BEGIN 
   
-  -- MUU: A1_MMU PORT MAP (clock  => clk, 
-  --                       reset  => rst, 
-  --                       optype => GetMemOp(afterD),  
-  --                       addr1  => GetOpA(afterD, afterX, GetRes(afterX, aluOut, memOut), imm_value),
-  --                       addr2  => GetOpB(afterD, afterX, GetRes(afterX, aluOut, memOut)),                         
-  --                       input  => afterX.op1,
-  --                       output => memOut,
-  --                       oready => memReady
-  --                      );    
+  opR <= GetRes(afterX, aluOut, memOut);
+  opA <= GetOpA(afterD, afterX, opR, imm_value);
+  opB <= GetOpB(afterD, afterX, opR);
+  
+  MUU: A1_MMU PORT MAP (clock  => clk, 
+                        reset  => rst, 
+                        optype => GetMemOp(afterD),  
+                        addr1  => opA,
+                        addr2  => opB,                         
+                        input  => afterX.op1,
+                        output => memOut,
+                        oready => memReady
+                       );    
                                              
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
@@ -741,12 +749,12 @@ BEGIN
                     resLow  => aluOut,
                     resHigh => highValue);
     
-    MemOperation(optype => GetMemOp(afterD), 
-                 addr1  => xA,
-                 addr2  => xB,
-                 input  => afterD.op1, 
-                 output => memOut,
-                 memory => memory);
+    -- MemOperation(optype => GetMemOp(afterD), 
+    --              addr1  => xA,
+    --              addr2  => xB,
+    --              input  => afterD.op1, 
+    --              output => memOut,
+    --              memory => memory);
     
     ------------------------------ control unit ------------------------------  
     if bubble then

@@ -64,6 +64,7 @@ begin
     if (reset = '1') then
       output <= x"00000000";
       oready <= '1';
+      memory <= (others => x"00000000");
     elsif rising_edge(clock) then     
 
       addr := to_sint(addr1) + to_sint(addr2);

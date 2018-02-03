@@ -14,7 +14,6 @@ package A0 is
   subtype WHOLE_INSTR_CODE is STD_LOGIC_VECTOR (5 downto 0);
   
   type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
-  type L1_MEMORY        is array (0 to 1023) of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
   
   type testtype is array (1 to 27) of string(1 to 24);
@@ -151,13 +150,7 @@ package A0 is
                             signal flags_LT : inout boolean;
                             signal resLow   : inout WORD;
                             signal resHigh  : inout WORD);
-
-  procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
-                         addr1  : in WORD;
-                         addr2  : in WORD;                         
-                         input  : in WORD; 
-                         signal output : out WORD;
-                         signal memory : inout L1_MEMORY);
+                            
 end A0;
 
 package body A0 is
@@ -441,28 +434,6 @@ package body A0 is
   end if;
      
   end ALUIntOperation; 
-
-  procedure MemOperation(optype : STD_LOGIC_VECTOR (1 downto 0); 
-                         addr1  : in  WORD; 
-                         addr2  : in  WORD; 
-                         input  : in  WORD; 
-                         signal output : out WORD;
-                         signal memory : inout L1_MEMORY) is 
-                         
-  variable addr : integer := to_sint(addr1) + to_sint(addr2);
-
-  begin 
-    case optype is
-      when M_LOAD  => output       <= memory(addr);   
-      
-      when M_STORE => memory(addr) <= input;      
-      
-      when M_SWAP  => output       <= memory(addr);   
-                      memory(addr) <= input;
-                  
-      when others  => output       <= input; 
-    end case;
-  end MemOperation;
   
 end A0;
 
@@ -507,7 +478,6 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal afterX : Instruction := CMD_NOP;
   
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
-  signal memory   : L1_MEMORY       := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
   signal imm_value   : WORD := x"00000000";
@@ -548,15 +518,15 @@ BEGIN
   opA <= GetOpA(afterD, afterX, opR, imm_value);
   opB <= GetOpB(afterD, afterX, opR);
   
-  -- MUU: A1_MMU PORT MAP (clock  => clk, 
-  --                       reset  => rst, 
-  --                       optype => GetMemOp(afterD),  
-  --                       addr1  => opA,
-  --                       addr2  => opB,                         
-  --                       input  => afterX.op1,
-  --                       output => memOut,
-  --                       oready => memReady
-  --                      );    
+  MUU: A1_MMU PORT MAP (clock  => clk, 
+                        reset  => rst, 
+                        optype => GetMemOp(afterD),  
+                        addr1  => opA,
+                        addr2  => opB,                         
+                        input  => afterD.op1,
+                        output => memOut,
+                        oready => memReady
+                       );    
                                              
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
@@ -741,13 +711,6 @@ BEGIN
                     carryOut, flags_Z, flags_LT,
                     resLow  => aluOut,
                     resHigh => highValue);
-    
-    MemOperation(optype => GetMemOp(afterD), 
-                 addr1  => opA,
-                 addr2  => opB,
-                 input  => afterD.op1, 
-                 output => memOut,
-                 memory => memory);
     
     ------------------------------ control unit ------------------------------  
     if bubble then

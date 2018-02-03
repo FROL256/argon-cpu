@@ -98,13 +98,13 @@ package A0 is
   -- F       F    F F  F  FF     F
   -- 00 10 0 CODE 0 R1 [R2+OFFS] FLAGS  R-type instruction; r, 0, m, sw, 0, R1, R2, 255 // mem(R2+255) := R1;
   -- 10 10 0 CODE 0 R1 [R2+OFFS] FLAGS  I-type instruction; i, 0, m, sw, 0, R1, R2, 255 // mem(R2+255) := -655362345; 
-  --                                                        d, {-655362345}           //            
+  --                                                        d, {-655362345}             //            
   --                                                        r, 1, m, lw R0, 0, R2, 255  // R0 := mem(R2+255);
                                                        
   -- CONTROL:  
   -- F     F    F F  F  FF    F                                              
   -- 00 01 CODE 0 R1 0  00    FLAGS  R-type instruction; r, 0, c, jmp, 0, 0, R2 // jmp [R2]
-  -- 10 01 CODE 0 0  0  00    FLAGS  I-type instruction; i, 0, c, jmp         // jmp [ADDRESS]
+  -- 10 01 CODE 0 0  0  00    FLAGS  I-type instruction; i, 0, c, jmp           // jmp [ADDRESS]
   --                                                        d, {ADDRESS}
  
   -- FLOAT:
@@ -144,7 +144,6 @@ package A0 is
   function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD;
   
   function GetMemOp(cmdX : Instruction)   return INSTR_MEM_TYPE;
-  --function GetMemAddr(afterD : Instruction; afterX : Instruction; imm_value : WORD; aluOut : WORD; memOut : WORD) return integer;
   
   procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
                             signal carryOut : inout std_logic;
@@ -549,15 +548,15 @@ BEGIN
   opA <= GetOpA(afterD, afterX, opR, imm_value);
   opB <= GetOpB(afterD, afterX, opR);
   
-  MUU: A1_MMU PORT MAP (clock  => clk, 
-                        reset  => rst, 
-                        optype => GetMemOp(afterD),  
-                        addr1  => opA,
-                        addr2  => opB,                         
-                        input  => afterX.op1,
-                        output => memOut,
-                        oready => memReady
-                       );    
+  -- MUU: A1_MMU PORT MAP (clock  => clk, 
+  --                       reset  => rst, 
+  --                       optype => GetMemOp(afterD),  
+  --                       addr1  => opA,
+  --                       addr2  => opB,                         
+  --                       input  => afterX.op1,
+  --                       output => memOut,
+  --                       oready => memReady
+  --                      );    
                                              
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
@@ -600,7 +599,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low to binFiles'high loop
+  for testId in binFiles'low+1 to binFiles'high loop
       
    clk <= '0';
    rst <= '0';
@@ -665,9 +664,7 @@ BEGIN
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
-  -------------- alu input and internal ---------------- 
-  variable xA : WORD;   
-  variable xB : WORD;   
+  -------------- alu input and internal ----------------  
   variable invalidateNow : boolean := false;
   variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
@@ -739,22 +736,18 @@ BEGIN
     
     ------------------------------ register fetch and bypassing from X to D ----------------------------
     
-    xA := GetOpA(afterD, afterX, GetRes(afterX, aluOut, memOut), imm_value);
-    xB := GetOpB(afterD, afterX, GetRes(afterX, aluOut, memOut));
-    
-    ------------------------------ bypassing from X to X ------------------------------
      
-    ALUIntOperation(afterD, xA, xB, 
+    ALUIntOperation(afterD, opA, opB, 
                     carryOut, flags_Z, flags_LT,
                     resLow  => aluOut,
                     resHigh => highValue);
     
-    -- MemOperation(optype => GetMemOp(afterD), 
-    --              addr1  => xA,
-    --              addr2  => xB,
-    --              input  => afterD.op1, 
-    --              output => memOut,
-    --              memory => memory);
+    MemOperation(optype => GetMemOp(afterD), 
+                 addr1  => opA,
+                 addr2  => opB,
+                 input  => afterD.op1, 
+                 output => memOut,
+                 memory => memory);
     
     ------------------------------ control unit ------------------------------  
     if bubble then
@@ -762,9 +755,9 @@ BEGIN
     elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
     
       if afterD.code(2 downto 0) = C_JMP  then
-        ip <= to_uint(xB);          -- JMP, Jump Absolute Addr
+        ip <= to_uint(opB);          -- JMP, Jump Absolute Addr
       else
-        ip <= to_uint(xB) + ip - 2; -- JRA, Jump Relative Addr
+        ip <= to_uint(opB) + ip - 2; -- JRA, Jump Relative Addr
       end if;
     
     else

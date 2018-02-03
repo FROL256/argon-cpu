@@ -15,11 +15,9 @@ package body ATESTS is
   function TestClocks(testId : in integer) return integer is
   begin 
 	  
-	case testId is 
-		
-	  when 0      => return 100; 
+	  case testId is 
+	    when 0      => return 100; 
       when others => return 100;
-		
     end case;
 	  
   end TestClocks;

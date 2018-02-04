@@ -139,6 +139,8 @@ package A0 is
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
+  function GetWriteEnableBit(cmd : Instruction) return boolean;
+  
   function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD;
   function GetOpA(afterD : Instruction; afterX : Instruction; xRes : WORD; imm_value : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD;
@@ -197,8 +199,8 @@ package body A0 is
   begin 
     
     cmd.imm      := ToBoolean(data(31));          -- first bit is 'immediate' flag  
-    cmd.we       := ToBoolean(data(30));          -- second is 'write enable' flag
-    cmd.itype    :=         data(29 downto 28);   -- next 2-bit instruction type
+    cmd.we       := false;                        -- evaluate this flag later on decode stage!
+    cmd.itype    :=         data(29 downto 28);   -- next 2-bit instruction type (3-bit actually, 1 bit is reserved currently)
     cmd.code     :=         data(27 downto 24);   -- next 4 bit for opcodes 
     cmd.reg0     := to_uint(data(23 downto 20));  -- next 4 bits for reg0
     cmd.reg1     := to_uint(data(19 downto 16));  -- next 4 bits for reg1
@@ -220,6 +222,25 @@ package body A0 is
   return cmd;   
   
   end ToInstruction;
+ 
+  function GetWriteEnableBit(cmd : Instruction) return boolean is
+    variable res : boolean := false;
+  begin 
+  
+    case cmd.itype is
+      when INSTR_ALUI =>
+        res := (cmd.code /= A_NOP);
+      when INSTR_MEM  =>
+        res := (cmd.code(1 downto 0) = M_LOAD) or (cmd.code(1 downto 0) = M_SWAP);
+      when INSTR_CNTR =>
+        res := false;
+      when others     => 
+        res := false;
+    end case;
+    
+    return res; 
+    
+  end GetWriteEnableBit;
  
   function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD is
   begin 
@@ -589,7 +610,8 @@ BEGIN
     haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
     bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette
     
-    halt <= haltNow;
+    halt       <= haltNow;
+    imm_value  <= rawCmdF;
     
     if bubble or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
       afterF <= CMD_NOP;
@@ -600,17 +622,8 @@ BEGIN
     -- 0 1 2 3
     -- F D X W
     --
-    afterD <= afterF; 
-    
-    -- here we have to deal with flags values and predicate commands
-    --
-    afterX <= afterD; 
-    invalidateNow := false;
-    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
-      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
-      afterX.invalid <= invalidateNow;
-      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
-    end if;
+    afterD    <= afterF; 
+    afterD.we <= GetWriteEnableBit(afterF);
     
     ------------------------------ register fetch and bypassing from X to D ---------------------------
     
@@ -619,8 +632,6 @@ BEGIN
     else  
       afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
     end if; 
-    
-    imm_value    <= rawCmdF;
     
     if afterF.imm then                                  -- read from instruction memory and ignore bypassing if command is immediate
       afterD.op2 <= rawCmdF; 
@@ -635,6 +646,16 @@ BEGIN
     end if;
     
     ------------------------------ register fetch and bypassing from X to D ----------------------------
+    
+    -- here we have to deal with flags values and predicate commands
+    --
+    afterX <= afterD; 
+    invalidateNow := false;
+    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
+      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
+      afterX.invalid <= invalidateNow;
+      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
+    end if;
    
    
     ------------------------------ control unit ------------------------------  

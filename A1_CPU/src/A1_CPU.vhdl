@@ -144,7 +144,10 @@ package A0 is
   
   function GetMemOp(cmdX : Instruction)   return INSTR_MEM_TYPE;
   
-  procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
+  procedure ALUIntOperation(code  : STD_LOGIC_VECTOR(3 downto 0); 
+                            flags : Flags;
+                            xA    : WORD; 
+                            xB    : WORD;                             
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
@@ -329,7 +332,10 @@ package body A0 is
   
   -- do integer alu operation in a single cycle
   --
-  procedure ALUIntOperation(cmdX : Instruction; xA : WORD; xB : WORD; 
+  procedure ALUIntOperation(code  : STD_LOGIC_VECTOR(3 downto 0); 
+                            flags : Flags;
+                            xA : WORD; 
+                            xB : WORD; 
                             signal carryOut : inout std_logic;
                             signal flags_Z  : inout boolean; 
                             signal flags_LT : inout boolean;
@@ -345,21 +351,17 @@ package body A0 is
   
   variable carryIn : std_logic := '0'; 
   variable zero    : std_logic := '0'; 
-  
-  variable shiftS   : std_logic := '0';   
-  variable memInAlu : boolean   := false;   -- if current mem command in alu calc address    
+  variable shiftS  : std_logic := '0';    
   
   begin
-
-  memInAlu := (cmdX.itype = INSTR_MEM);     
     
-  if cmdX.code(1) = '1' and not memInAlu then  -- sub or sbc  
+  if code(1) = '1' then  -- sub or sbc  
     yB := not xB;
   else   
     yB := xB;    
   end if;      
     
-  carryIn := ToStdLogic( ((cmdX.code(1 downto 0) = "10") or (cmdX.code(1 downto 0) = "01" and carryOut = '1')) and not memInAlu); -- SUB or ADC and not mem operation
+  carryIn := ToStdLogic( ((code(1 downto 0) = "10") or (code(1 downto 0) = "01" and carryOut = '1')) ); -- SUB or ADC
      
   rAdd := ("0" & unsigned(xA)) + unsigned(yB) + (unsigned'("") & carryIn); -- full 32 bit adder with carry
   carryOut <= rAdd(32);     
@@ -368,70 +370,67 @@ package body A0 is
                rAdd(21) or rAdd(20) or rAdd(19) or rAdd(18) or rAdd(17) or rAdd(16) or rAdd(15) or rAdd(14) or rAdd(13) or rAdd(12) or 
                rAdd(11) or rAdd(10) or rAdd(9)  or rAdd(8)  or rAdd(7)  or rAdd(6)  or rAdd(5)  or rAdd(4)  or rAdd(3)  or rAdd(2)  or rAdd(1) or rAdd(0));
     
-  if cmdX.itype = INSTR_ALUI then
+  
    
-    if cmdX.flags.CF then
-      flags_Z  <= (zero     = '1');
-      flags_LT <= (rAdd(31) = '1');  -- sign bit
-    else
-      flags_Z  <= flags_Z;
-      flags_LT <= flags_LT;
-    end if;
-    
-   ----------------------------------------------------------------- mul group  (may be need to optimize, may be not)
-     
-   if cmdX.flags.S then 
-     rMul := unsigned(signed(xA) * signed(xB));
-   else
-     rMul := unsigned(xA) * unsigned(xB);         -- full 32 to 64 bit signed/unsigned multiplyer;  
-   end if;
-    
-   resHigh <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
-    
-   case cmdX.code(1 downto 0) is
-     when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
-     when others => rMulc := resHigh;                 -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
-   end case;
-    
-   ----------------------------------------------------------------- logic group
-   --
-   case cmdX.code(1 downto 0) is
-     when "00"   => rLog := xA and xB;   
-     when "01"   => rLog := xA or  xB;
-     when "10"   => rLog :=    not xA;
-     when others => rLog := xA xor xB;
-   end case;  
-    
-   ----------------------------------------------------------------- shift group
-   -- 
-   if cmdX.flags.S then  
-     shiftS := xA(31);   -- arithmetic shifts
-   else
-     shiftS := '0';      -- common shifts
-   end if;
-    
-   case cmdX.code(1 downto 0) is
-     when "01"   => rShift := xA(30 downto 0) & '0';     -- replace with sll
-                    if cmdX.flags.S then 
-                      rShift(31) := shiftS;
-                    end if;  
-     when "10"   => rShift := shiftS & xA(31 downto 1);  -- replace with srl
-     when "11"   => rShift := xB;
-     when others => rShift := x"00000000";
-   end case;
-    
-   -- get final result   
-   --
-   case cmdX.code(3 downto 2) is     
-       when "00"   => resLow <= rShift;
-       when "01"   => resLow <= std_logic_vector(rAdd(31 downto 0));
-       when "10"   => resLow <= rLog;
-       when others => resLow <= rMulc;
-   end case;   
-   -------------------------- alu core ----------------------------- 
+  if flags.CF then
+    flags_Z  <= (zero     = '1');
+    flags_LT <= (rAdd(31) = '1');  -- sign bit
   else
-    resLow <= x"00000000";
+    flags_Z  <= flags_Z;
+    flags_LT <= flags_LT;
   end if;
+   
+  ----------------------------------------------------------------- mul group  (may be need to optimize, may be not)
+    
+  if flags.S then 
+    rMul := unsigned(signed(xA) * signed(xB));
+  else
+    rMul := unsigned(xA) * unsigned(xB);           -- full 32 to 64 bit signed/unsigned multiplyer;  
+  end if;
+   
+  resHigh <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
+   
+  case code(1 downto 0) is
+    when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
+    when others => rMulc := resHigh;                             -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+  end case;
+   
+  ----------------------------------------------------------------- logic group
+  --
+  case code(1 downto 0) is
+    when "00"   => rLog := xA and xB;   
+    when "01"   => rLog := xA or  xB;
+    when "10"   => rLog :=    not xA;
+    when others => rLog := xA xor xB;
+  end case;  
+   
+  ----------------------------------------------------------------- shift group
+  -- 
+  if flags.S then  
+    shiftS := xA(31);   -- arithmetic shifts
+  else
+    shiftS := '0';      -- common shifts
+  end if;
+   
+  case code(1 downto 0) is
+    when "01"   => rShift := xA(30 downto 0) & '0';     -- replace with sll
+                   if flags.S then 
+                     rShift(31) := shiftS;
+                   end if;  
+    when "10"   => rShift := shiftS & xA(31 downto 1);  -- replace with srl
+    when "11"   => rShift := xB;
+    when others => rShift := x"00000000";
+  end case;
+   
+  -- get final result   
+  --
+  case code(3 downto 2) is     
+    when "00"   => resLow <= rShift;
+    when "01"   => resLow <= std_logic_vector(rAdd(31 downto 0));
+    when "10"   => resLow <= rLog;
+    when others => resLow <= rMulc;
+  end case;   
+  -------------------------- alu core ----------------------------- 
      
   end ALUIntOperation; 
   
@@ -480,9 +479,8 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
   
-  signal imm_value   : WORD := x"00000000";
+  signal imm_value: WORD := x"00000000";
  
-  
   signal flags_Z  : boolean := false; -- Zero
   signal flags_LT : boolean := false; -- Less Than
   signal flags_P  : boolean := false; -- Custom Predicate  
@@ -508,9 +506,9 @@ ARCHITECTURE RTL OF A1_CPU IS
     );
   END COMPONENT;
 
-  signal opA : WORD := x"00000000";  
-  signal opB : WORD := x"00000000";
-  signal opR : WORD := x"00000000";
+  signal opA : WORD := x"00000000"; -- bypassed input to ALU or MEM (first operand) 
+  signal opB : WORD := x"00000000"; -- bypassed input to ALU or MEM (second operand) 
+  signal opR : WORD := x"00000000"; -- result of command after X stage (or M or other).
   
 BEGIN 
   
@@ -685,29 +683,28 @@ BEGIN
     ------------------------------ register fetch and bypassing from X to D ---------------------------
     
     if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
-      afterD.op1 <= GetRes(afterX, aluOut, memOut); 
+      afterD.op1 <= opR; 
     else  
       afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
     end if; 
     
     imm_value    <= rawCmdF;
     
-    if afterF.imm then                                    -- read from instruction memory and ignore bypassing if command is immediate
+    if afterF.imm then                                  -- read from instruction memory and ignore bypassing if command is immediate
       afterD.op2 <= rawCmdF; 
     else       
       
-      if afterX.reg0 = afterF.reg2 and afterX.we then     -- bypass result from X to op2
-        afterD.op2 <= GetRes(afterX, aluOut, memOut); 
+      if afterX.reg0 = afterF.reg2 and afterX.we then   -- bypass result from X to op2
+        afterD.op2 <= opR; 
       else 
-        afterD.op2 <= regs(afterF.reg2);                  -- ok, read from register file
+        afterD.op2 <= regs(afterF.reg2);                -- ok, read from register file
       end if;    
       
     end if;
     
     ------------------------------ register fetch and bypassing from X to D ----------------------------
-    
-     
-    ALUIntOperation(afterD, opA, opB, 
+        
+    ALUIntOperation(afterD.code, afterD.flags, opA, opB, 
                     carryOut, flags_Z, flags_LT,
                     resLow  => aluOut,
                     resHigh => highValue);
@@ -730,7 +727,7 @@ BEGIN
     
     ------------------------------ write back ------------------------------   
     if afterX.we and not afterX.invalid then
-      regs(afterX.reg0) <= GetRes(afterX, aluOut, memOut);  
+      regs(afterX.reg0) <= opR;  
     end if;
     ------------------------------ write back ------------------------------
    

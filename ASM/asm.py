@@ -87,8 +87,8 @@ def encodeCommand(tokens):
       if tokens[8] == 'sf':
         setFlagsFlag = 1
 	
-    bits |= (signedFlag << 11)
-    bits |= (setFlagsFlag << 10)
+    bits |= (signedFlag   << 10)
+    bits |= (setFlagsFlag << 11)
 	
     if len(tokens) < 11: return bits
     cond = tokens[10]

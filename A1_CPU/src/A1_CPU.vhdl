@@ -208,8 +208,8 @@ package body A0 is
     cmd.memOffs  :=         data(11 downto 4);
     
     if cmd.itype = INSTR_ALUI then                -- don't use memOffs, read flags instead
-      cmd.flags.S  := ToBoolean(cmd.memOffs(7)); 
-      cmd.flags.CF := ToBoolean(cmd.memOffs(6));
+      cmd.flags.S  := ToBoolean(cmd.memOffs(6)); 
+      cmd.flags.CF := ToBoolean(cmd.memOffs(7));
     end if;
     
     cmd.invalid  := false;  

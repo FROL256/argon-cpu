@@ -63,14 +63,13 @@ begin
       addr := to_sint(addr1) + to_sint(addr2);
     
       case optype is
+      
         when M_LOAD  => output       <= memory(addr);   
       
         when M_STORE => memory(addr) <= input;      
-        
-        when M_SWAP  => output       <= memory(addr);   
-                        memory(addr) <= input;
                     
         when others  => output       <= input; 
+      
       end case;
      
      oready <= '1';

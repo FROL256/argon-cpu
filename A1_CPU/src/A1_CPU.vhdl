@@ -17,7 +17,7 @@ package A0 is
   type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
   
-  type testtype is array (1 to 27) of string(1 to 24);
+  type testtype is array (1 to 26) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -42,7 +42,7 @@ package A0 is
   constant M_NOP   : STD_LOGIC_VECTOR(1 downto 0) := "00";
   constant M_LOAD  : STD_LOGIC_VECTOR(1 downto 0) := "01";
   constant M_STORE : STD_LOGIC_VECTOR(1 downto 0) := "10";
-  constant M_SWAP  : STD_LOGIC_VECTOR(1 downto 0) := "11";
+  --constant M_SWAP  : STD_LOGIC_VECTOR(1 downto 0) := "11";
   
   constant C_NOP   : STD_LOGIC_VECTOR(2 downto 0) := "000";
   constant C_JMP   : STD_LOGIC_VECTOR(2 downto 0) := "001";
@@ -56,7 +56,7 @@ package A0 is
                          DA_ADD, DA_ADC, DA_SUB, DA_SBC,
                          DA_AND, DA_OR,  DA_NOT, DA_XOR,
                          DA_MFH, DA_MUL, DA_NN1, DA_NN2,
-                         DM_NOP, DM_LOAD, DM_STORE, DM_SWAP,
+                         DM_NOP, DM_LOAD, DM_STORE, 
                          DC_NOP, DC_JMP,  DC_JRA, DC_HLT, DC_INT);
                           
   function decodeDebug(code : in WHOLE_INSTR_CODE) return DEBUG_COMMAND;
@@ -180,7 +180,6 @@ package body A0 is
     when "100000" => return DM_NOP;
     when "100001" => return DM_LOAD;
     when "100010" => return DM_STORE;
-    when "100011" => return DM_SWAP; 
     
     when "010000" => return DC_NOP;
     when "010001" => return DC_JMP;
@@ -231,7 +230,7 @@ package body A0 is
       when INSTR_ALUI =>
         res := (cmd.code /= A_NOP);
       when INSTR_MEM  =>
-        res := (cmd.code(1 downto 0) = M_LOAD) or (cmd.code(1 downto 0) = M_SWAP);
+        res := (cmd.code(1 downto 0) = M_LOAD);
       when INSTR_CNTR =>
         res := false;
       when others     => 
@@ -514,8 +513,7 @@ BEGIN
                                    23 => "../../ASM/bin/out023.txt",
                                    24 => "../../ASM/bin/out024.txt",
                                    25 => "../../ASM/bin/out025.txt",
-                                   26 => "../../ASM/bin/out026.txt",
-                                   27 => "../../ASM/bin/out027.txt"
+                                   26 => "../../ASM/bin/out026.txt"
                                   );
   
   begin     

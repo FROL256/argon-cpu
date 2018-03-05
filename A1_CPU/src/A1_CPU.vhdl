@@ -633,7 +633,7 @@ BEGIN
     bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette; replace it with scoreboard
     
     ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must buble in this case. 
-    if afterF.we then                                                     
+    if afterF.we then                                                   ---- #TODO: use different bubble variable because this is on F stage and we need to bubble after D stage !!!      
     
       -- (1) scoreboard common tick
       --
@@ -659,7 +659,7 @@ BEGIN
             wfifo2    (ALUI_PIPE_LEN) <= INSTR_ALUI;
             scoreboard(afterF.reg0)   <= ALUI_PIPE_LEN;            
           else
-            bubble := true;        
+            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
           end if;                          
         
         when INSTR_MEM  => 
@@ -668,7 +668,7 @@ BEGIN
             wfifo2    (MEM_PIPE_LEN)  <= INSTR_MEM; 
             scoreboard(afterF.reg0)   <= MEM_PIPE_LEN;
           else
-            bubble := true;
+            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
           end if;                          
           
         when INSTR_CNTR => 
@@ -677,7 +677,7 @@ BEGIN
             wfifo2    (1)             <= INSTR_CNTR; 
             scoreboard(afterF.reg0)   <= 1;
           else
-            bubble := true;
+            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
           end if;
           
         -- when INSTR_ALUF => 

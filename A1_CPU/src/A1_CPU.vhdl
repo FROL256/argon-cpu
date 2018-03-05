@@ -8,14 +8,29 @@ package A0 is
   
   subtype WORD is STD_LOGIC_VECTOR (31 downto 0);
   subtype BYTE is STD_LOGIC_VECTOR (7 downto 0);
-  
   subtype REGT is integer range 0 to 15;
+  
+  type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
+  type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
+  
   subtype INSTR_MEM_TYPE   is STD_LOGIC_VECTOR (1 downto 0);
   subtype ALU_MEM_TYPE     is STD_LOGIC_VECTOR (3 downto 0);
   subtype WHOLE_INSTR_CODE is STD_LOGIC_VECTOR (5 downto 0);
   
-  type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
-  type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
+  -----------------------------------------------------------------------------------------------------------------------
+  ---- scoreboard
+  constant MAX_PIPE_LEN    : integer := 3;                                      -- allow max 3 stages of the pipeline, can be changed easily.
+  subtype  PIPE_COUNT_T is integer range 0 to MAX_PIPE_LEN;                     -- per register counter type
+  constant SCOREBOARD_ZERO : PIPE_COUNT_T := 0;
+   
+  type     SCOREBOARD_TYPE is array        (0 to REGT'high)    of PIPE_COUNT_T;   -- array of per-register counters
+  type     SCOREBOARD_FIFO is array        (0 to MAX_PIPE_LEN) of STD_LOGIC;      -- fifo to solve Write Back structural hazard
+  type     SCOREBOARD_CMDT is array        (0 to MAX_PIPE_LEN) of INSTR_MEM_TYPE; -- store command pipe id
+  
+  constant ALUI_PIPE_LEN : PIPE_COUNT_T := 1;
+  constant MEM_PIPE_LEN  : PIPE_COUNT_T := 1;
+  
+  -----------------------------------------------------------------------------------------------------------------------
   
   type testtype is array (1 to 26) of string(1 to 24);
  
@@ -49,6 +64,7 @@ package A0 is
   constant C_JRA   : STD_LOGIC_VECTOR(2 downto 0) := "100";
   constant C_HLT   : STD_LOGIC_VECTOR(2 downto 0) := "010";
   constant C_INT   : STD_LOGIC_VECTOR(2 downto 0) := "011";
+ 
   
   ------- #DEBUG: THIS IS FOR DEBUG NEEDS ONLY, TO SEE COMMAND NAME IN DEBUGGER ------ !!!
   
@@ -119,7 +135,7 @@ package A0 is
     reg2    : REGT; 
     imm     : boolean;                      -- immediate flag          
     we      : boolean;                      -- write enable
-    itype   : STD_LOGIC_VECTOR(1 downto 0); -- instruction type  
+    itype   : STD_LOGIC_VECTOR(1 downto 0); -- instruction type/pipe_id  
     code    : STD_LOGIC_VECTOR(3 downto 0); -- instruction op-code   
     memOffs : STD_LOGIC_VECTOR(7 downto 0); -- used only by memory instructions 
     flags   : Flags;                        -- predicates
@@ -408,6 +424,10 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal halt      : boolean   := false;
   signal memReady  : std_logic := '0';  
   
+  signal scoreboard : SCOREBOARD_TYPE := (others => SCOREBOARD_ZERO);
+  signal wfifo1     : SCOREBOARD_FIFO := (others => '0');
+  signal wfifo2     : SCOREBOARD_CMDT := (others => "00");
+  
   COMPONENT A1_MMU IS
     PORT(   
       clock   : in STD_LOGIC;  
@@ -588,6 +608,10 @@ BEGIN
   variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
   
+  -------------- scoreboard ----------------
+  variable i : PIPE_COUNT_T := 0;
+  variable j : REGT         := 0;
+  -------------- scoreboard ----------------
   
   begin           
 
@@ -606,7 +630,66 @@ BEGIN
     cmdF    := ToInstruction(rawCmdF);
     
     haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-    bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette
+    bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette; replace it with scoreboard
+    
+    ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must buble in this case. 
+    if afterF.we then                                                     
+    
+      -- (1) scoreboard common tick
+      --
+      for i in 0 to MAX_PIPE_LEN-1 loop
+		    wfifo1(i) <= wfifo1(i+1);
+        wfifo2(i) <= wfifo2(i+1);
+	    end loop;
+      
+      for j in 0 to REGT'high loop
+        if scoreboard(j) = 0 then
+          scoreboard(j) <= 0;
+        else
+          scoreboard(j) <= scoreboard(j)-1;
+        end if;
+	    end loop;
+    
+      -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
+      --
+      case afterF.itype is    
+        when INSTR_ALUI => 
+          if wfifo1   (ALUI_PIPE_LEN+1) = '0' then            --- identify if there is no WriteBack control hazard
+            wfifo1    (ALUI_PIPE_LEN) <= '1'; 
+            wfifo2    (ALUI_PIPE_LEN) <= INSTR_ALUI;
+            scoreboard(afterF.reg0)   <= ALUI_PIPE_LEN;            
+          else
+            bubble := true;        
+          end if;                          
+        
+        when INSTR_MEM  => 
+          if wfifo1   (MEM_PIPE_LEN+1) = '0' then             --- identify if there is no WriteBack control hazard
+            wfifo1    (MEM_PIPE_LEN)  <= '1';  
+            wfifo2    (MEM_PIPE_LEN)  <= INSTR_MEM; 
+            scoreboard(afterF.reg0)   <= MEM_PIPE_LEN;
+          else
+            bubble := true;
+          end if;                          
+          
+        when INSTR_CNTR => 
+          if wfifo1   (2) = '0' then                          --- identify if there is no WriteBack control hazard
+            wfifo1    (1)             <= '1'; 
+            wfifo2    (1)             <= INSTR_CNTR; 
+            scoreboard(afterF.reg0)   <= 1;
+          else
+            bubble := true;
+          end if;
+          
+        -- when INSTR_ALUF => 
+        -- 
+        when others     => 
+          null;
+          
+      end case;
+      
+    end if;
+      
+    ------------------------------ scoreboard ------------------------------
     
     halt       <= haltNow;
     imm_value  <= rawCmdF;
@@ -656,7 +739,7 @@ BEGIN
     end if;
    
    
-    ------------------------------ control unit ------------------------------  
+    ------------------------------ control unit ---------------------------- 
     if bubble then
       ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
@@ -670,13 +753,13 @@ BEGIN
     else
       ip <= ip+1;
     end if;    
-    ------------------------------ control unit ------------------------------ 
+    ------------------------------ control unit ---------------------------- 
     
     ------------------------------ write back ------------------------------   
     if afterX.we and not afterX.invalid then
       regs(afterX.reg0) <= opR;  
     end if;
-    ------------------------------ write back ------------------------------
+    ------------------------------ write back ------------------------------ 
    
    
   end if; -- end of rising_edge(clk)

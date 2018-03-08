@@ -21,15 +21,21 @@ package A0 is
   ---- scoreboard
   constant MAX_PIPE_LEN    : integer := 3;                                      -- allow max 3 stages of the pipeline, can be changed easily.
   subtype  PIPE_COUNT_T is integer range 0 to MAX_PIPE_LEN;                     -- per register counter type
-  constant SCOREBOARD_ZERO : PIPE_COUNT_T := 0;
-   
-  type     SCOREBOARD_TYPE is array        (0 to REGT'high)    of PIPE_COUNT_T;   -- array of per-register counters
-  type     SCOREBOARD_FIFO is array        (0 to MAX_PIPE_LEN) of STD_LOGIC;      -- fifo to solve Write Back structural hazard
-  type     SCOREBOARD_CMDT is array        (0 to MAX_PIPE_LEN) of INSTR_MEM_TYPE; -- store command pipe id
+ 
+  
+  type SCOREBOARD_ELEM is record
+    wbn  : STD_LOGIC;             -- write back now
+    cmdt : INSTR_MEM_TYPE;        -- command type
+  end record;
+  
+  type     SCOREBOARD_TYPE is array (0 to REGT'high)    of PIPE_COUNT_T;     -- array of per-register counters
+  type     SCOREBOARD_FIFO is array (0 to MAX_PIPE_LEN) of SCOREBOARD_ELEM;  -- fifo to solve Write Back structural hazard and store command pipe id
   
   constant ALUI_PIPE_LEN : PIPE_COUNT_T := 1;
   constant MEM_PIPE_LEN  : PIPE_COUNT_T := 1;
   
+  constant SCOREBOARD_ZERO_ELEM : SCOREBOARD_ELEM := (wbn => '0', cmdt => "00");
+  constant SCOREBOARD_ZERO      : PIPE_COUNT_T := 0; 
   -----------------------------------------------------------------------------------------------------------------------
   
   type testtype is array (1 to 26) of string(1 to 24);
@@ -97,10 +103,10 @@ package A0 is
   --  65536   
   -- ----------------------> so, I-type instructions take 2 clock cycles in simple implementation
   
-  constant INSTR_ALUI : STD_LOGIC_VECTOR(1 downto 0) := "00";
-  constant INSTR_MEM  : STD_LOGIC_VECTOR(1 downto 0) := "10"; 
-  constant INSTR_CNTR : STD_LOGIC_VECTOR(1 downto 0) := "01";
-  constant INSTR_ALUF : STD_LOGIC_VECTOR(1 downto 0) := "11";
+  constant INSTR_ALUI : INSTR_MEM_TYPE := "00";
+  constant INSTR_MEM  : INSTR_MEM_TYPE := "10"; 
+  constant INSTR_CNTR : INSTR_MEM_TYPE := "01";
+  constant INSTR_ALUF : INSTR_MEM_TYPE := "11";
   
   -- ALUI: 
   --
@@ -425,8 +431,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal memReady  : std_logic := '0';  
   
   signal scoreboard : SCOREBOARD_TYPE := (others => SCOREBOARD_ZERO);
-  signal wfifo1     : SCOREBOARD_FIFO := (others => '0');
-  signal wfifo2     : SCOREBOARD_CMDT := (others => "00");
+  signal wfifo      : SCOREBOARD_FIFO := (others => SCOREBOARD_ZERO_ELEM);
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -635,13 +640,12 @@ BEGIN
     bubble2 := false;
     
     ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
-    if afterF.we then                                                   ---- #TODO: use different bubble variable because this is on F stage and we need to bubble after D stage !!!      
+    if afterF.we then                                                         
     
       -- (1) scoreboard common tick
       --
       for i in 0 to MAX_PIPE_LEN-1 loop
-		    wfifo1(i) <= wfifo1(i+1);
-        wfifo2(i) <= wfifo2(i+1);
+		    wfifo(i) <= wfifo(i+1);
 	    end loop;
       
       for j in 0 to REGT'high loop
@@ -656,28 +660,28 @@ BEGIN
       --
       case afterF.itype is    
         when INSTR_ALUI => 
-          if wfifo1   (ALUI_PIPE_LEN+1) = '0' then            --- identify if there is no WriteBack control hazard
-            wfifo1    (ALUI_PIPE_LEN) <= '1'; 
-            wfifo2    (ALUI_PIPE_LEN) <= INSTR_ALUI;
-            scoreboard(afterF.reg0)   <= ALUI_PIPE_LEN;            
+          if wfifo    (ALUI_PIPE_LEN+1).wbn = '0' then            --- identify if there is no WriteBack control hazard 
+            wfifo     (ALUI_PIPE_LEN).wbn  <= '1'; 
+            wfifo     (ALUI_PIPE_LEN).cmdt <= INSTR_ALUI;
+            scoreboard(afterF.reg0)        <= ALUI_PIPE_LEN;            
           else
             bubble2 := true;                                 
           end if;                          
         
         when INSTR_MEM  => 
-          if wfifo1   (MEM_PIPE_LEN+1) = '0' then             --- identify if there is no WriteBack control hazard
-            wfifo1    (MEM_PIPE_LEN)  <= '1';  
-            wfifo2    (MEM_PIPE_LEN)  <= INSTR_MEM; 
-            scoreboard(afterF.reg0)   <= MEM_PIPE_LEN;
+          if wfifo   (MEM_PIPE_LEN+1).wbn = '0' then             --- identify if there is no WriteBack control hazard
+            wfifo    (MEM_PIPE_LEN).wbn  <= '1';  
+            wfifo    (MEM_PIPE_LEN).cmdt <= INSTR_MEM; 
+            scoreboard(afterF.reg0)      <= MEM_PIPE_LEN;
           else
             bubble2 := true;                                  
           end if;                          
           
         when INSTR_CNTR => 
-          if wfifo1   (2) = '0' then                          --- identify if there is no WriteBack control hazard
-            wfifo1    (1)             <= '1'; 
-            wfifo2    (1)             <= INSTR_CNTR; 
-            scoreboard(afterF.reg0)   <= 1;
+          if wfifo    (2).wbn = '0' then                          --- identify if there is no WriteBack control hazard
+            wfifo     (1).wbn       <= '1'; 
+            wfifo     (1).cmdt      <= INSTR_CNTR; 
+            scoreboard(afterF.reg0) <= 1;
           else
             bubble2 := true;                                  
           end if;

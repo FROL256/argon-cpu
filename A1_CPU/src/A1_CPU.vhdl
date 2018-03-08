@@ -244,7 +244,7 @@ package body A0 is
   
     case cmd.itype is
       when INSTR_ALUI =>
-        res := (cmd.code /= A_NOP);
+        res := (cmd.code /= A_NOP) and (cmd.flags.CF = false); -- if command change flags it does not have to write the register! This is our agreement
       when INSTR_MEM  =>
         res := (cmd.code(1 downto 0) = M_LOAD);
       when INSTR_CNTR =>
@@ -538,7 +538,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low to binFiles'high loop
+  for testId in binFiles'low to binFiles'high loop -- 
       
    clk <= '0';
    rst <= '0';
@@ -598,9 +598,10 @@ BEGIN
   main : process(clk,rst)
   
   -------------- fetch input ----------------
-  variable cmdF    : Instruction;
-  variable rawCmdF : WORD;             
-  variable bubble  : boolean := false;
+  variable cmdF     : Instruction;
+  variable rawCmdF  : WORD;             
+  variable bubble   : boolean := false;
+  variable bubble2  : boolean := false;
   -------------- fetch input ---------------- 
   
   -------------- alu input and internal ----------------  
@@ -630,9 +631,10 @@ BEGIN
     cmdF    := ToInstruction(rawCmdF);
     
     haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-    bubble  := ((afterF.itype = INSTR_MEM) and afterF.we and (afterF.reg0 = cmdF.reg1 or afterF.reg0 = cmdF.reg2)) or haltNow; -- #TODO: this code is obsolette; replace it with scoreboard
+    bubble  := haltNow; 
+    bubble2 := false;
     
-    ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must buble in this case. 
+    ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
     if afterF.we then                                                   ---- #TODO: use different bubble variable because this is on F stage and we need to bubble after D stage !!!      
     
       -- (1) scoreboard common tick
@@ -659,7 +661,7 @@ BEGIN
             wfifo2    (ALUI_PIPE_LEN) <= INSTR_ALUI;
             scoreboard(afterF.reg0)   <= ALUI_PIPE_LEN;            
           else
-            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
+            bubble2 := true;                                 
           end if;                          
         
         when INSTR_MEM  => 
@@ -668,7 +670,7 @@ BEGIN
             wfifo2    (MEM_PIPE_LEN)  <= INSTR_MEM; 
             scoreboard(afterF.reg0)   <= MEM_PIPE_LEN;
           else
-            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
+            bubble2 := true;                                  
           end if;                          
           
         when INSTR_CNTR => 
@@ -677,7 +679,7 @@ BEGIN
             wfifo2    (1)             <= INSTR_CNTR; 
             scoreboard(afterF.reg0)   <= 1;
           else
-            bubble := true;                                   --- #TODO: THIS IS WRONG !!!
+            bubble2 := true;                                  
           end if;
           
         -- when INSTR_ALUF => 
@@ -694,7 +696,7 @@ BEGIN
     halt       <= haltNow;
     imm_value  <= rawCmdF;
     
-    if bubble or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
+    if bubble or bubble2 or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
       afterF <= CMD_NOP;
     else
       afterF <= cmdF;
@@ -703,8 +705,25 @@ BEGIN
     -- 0 1 2 3
     -- F D X W
     --
-    afterD    <= afterF; 
-    afterD.we <= GetWriteEnableBit(afterF);
+    
+    if bubble2 then 
+      afterD    <= afterD;
+      afterX    <= CMD_NOP;
+    else  
+      afterD    <= afterF; 
+      afterD.we <= GetWriteEnableBit(afterF);
+      afterX    <= afterD;
+      
+      -- here we have to deal with flags values and predicate commands
+      --
+      invalidateNow := false;
+      if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
+        invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
+        afterX.invalid <= invalidateNow;
+        afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
+      end if;
+      
+    end if;
     
     ------------------------------ register fetch and bypassing from X to D ---------------------------
     
@@ -727,20 +746,10 @@ BEGIN
     end if;
     
     ------------------------------ register fetch and bypassing from X to D ----------------------------
-    
-    -- here we have to deal with flags values and predicate commands
-    --
-    afterX <= afterD; 
-    invalidateNow := false;
-    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
-      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
-      afterX.invalid <= invalidateNow;
-      afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
-    end if;
    
    
     ------------------------------ control unit ---------------------------- 
-    if bubble then
+    if bubble or bubble2 then
       ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
     

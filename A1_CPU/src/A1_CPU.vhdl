@@ -160,6 +160,7 @@ package A0 is
   function ToStdLogic(L: BOOLEAN) return std_logic; 
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
+  function InvalidCommand(afterD : Instruction; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
@@ -167,7 +168,7 @@ package A0 is
   function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   
-  function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE;
+  function GetMemOp(cmdX : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE;
   function GetAluOp(cmdX : Instruction) return ALU_MEM_TYPE;
                             
 end A0;
@@ -303,9 +304,9 @@ package body A0 is
     end if;    
   end GetOpB;
   
-  function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE is
+  function GetMemOp(cmdX : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE is
   begin 
-   if cmdX.itype = INSTR_MEM then -- #TODO: and command is valid !!! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! THIS IS A BUG!!!!!
+   if cmdX.itype = INSTR_MEM and not isInvalid then -- #TODO: test this case; create test program; it is untested currently !!!!
      return cmdX.code(1 downto 0);    
    else
      return M_NOP;     
@@ -369,6 +370,15 @@ package body A0 is
     
   end InvalidateCmdIfFlagsDifferent;
   
+  function InvalidCommand(afterD : Instruction; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean is
+  begin 
+    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
+      return InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
+    else
+      return false;
+    end if;
+  end InvalidCommand;
+  
 end A0;
 
 
@@ -415,14 +425,16 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal imm_value: WORD := x"00000000";
  
-  signal flags_Z  : boolean := false; -- Zero
-  signal flags_LT : boolean := false; -- Less Than
-  signal flags_P  : boolean := false; -- Custom Predicate  
-  signal carryOut : std_logic := '0';  
+  signal flags_Z       : boolean := false; -- Zero
+  signal flags_LT      : boolean := false; -- Less Than
+  signal flags_P       : boolean := false; -- Custom Predicate  
+  signal carryOut      : std_logic := '0';  
+  signal invalidAfterD : boolean   := false;
   
-  signal highValue : WORD := x"00000000";  
-  signal aluOut    : WORD := x"00000000"; -- ALU result
-  signal memOut    : WORD := x"00000000"; -- MEM result  
+  signal highValue  : WORD := x"00000000";  
+  signal aluOut     : WORD := x"00000000"; -- ALU result
+  signal memOut     : WORD := x"00000000"; -- MEM result 
+  signal memInputOp : STD_LOGIC_VECTOR(1 downto 0) := "00";   
   
   signal halt      : boolean   := false;
   signal memReady  : std_logic := '0';  
@@ -468,10 +480,18 @@ ARCHITECTURE RTL OF A1_CPU IS
   
 BEGIN 
   
+  -- bypass values
+  --
   opR <= GetRes(wpipe(0).pid, aluOut, memOut);
   opA <= GetOpA(afterD, wpipe(0), opR, imm_value);
   opB <= GetOpB(afterD, wpipe(0), opR);
   
+  -- here we have to deal with flags values and predicate commands
+  --
+  invalidAfterD <= InvalidCommand(afterD, flags_Z, flags_LT, flags_P);
+  
+  -- put other modules here
+  --
   ALU : A1_ALU PORT MAP (clock    => clk, 
                          reset    => rst, 
                          
@@ -488,9 +508,11 @@ BEGIN
                          resHigh  => highValue
                          );
   
+  memInputOp <= GetMemOp(afterD, invalidAfterD);
+  
   MUU: A1_MMU PORT MAP (clock  => clk, 
                         reset  => rst, 
-                        optype => GetMemOp(afterD),  
+                        optype => memInputOp,  
                         addr1  => opA,
                         addr2  => opB,                         
                         input  => afterD.op1,
@@ -605,9 +627,6 @@ BEGIN
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
-  -------------- alu input and internal ----------------  
-  variable invalidateNow : boolean := false;
-  -------------- alu input and internal ----------------
   
   -------------- scoreboard ----------------
   variable i : PIPE_COUNT_T := 0;
@@ -644,13 +663,6 @@ BEGIN
       end if;
     end loop;
     
-    -- here we have to deal with flags values and predicate commands
-    --
-    invalidateNow := false;
-    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
-      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
-    end if;
-    
     -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
     -- 
     bubble := false;    
@@ -659,7 +671,7 @@ BEGIN
       case afterD.itype is    
         when INSTR_ALUI => 
           if wpipe    (ALUI_PIPE_LEN  ).wbn = false then            --- identify if there is no WriteBack control hazard 
-            wpipe     (ALUI_PIPE_LEN-1).wbn <= not invalidateNow; 
+            wpipe     (ALUI_PIPE_LEN-1).wbn <= not invalidAfterD; 
             wpipe     (ALUI_PIPE_LEN-1).pid <= INSTR_ALUI;
             wpipe     (ALUI_PIPE_LEN-1).reg <= afterD.reg0; 
             scoreboard(afterD.reg0)         <= ALUI_PIPE_LEN;            
@@ -669,7 +681,7 @@ BEGIN
         
         when INSTR_MEM  => 
           if wpipe    (MEM_PIPE_LEN  ).wbn = false then             --- identify if there is no WriteBack control hazard
-            wpipe     (MEM_PIPE_LEN-1).wbn <= not invalidateNow;  
+            wpipe     (MEM_PIPE_LEN-1).wbn <= not invalidAfterD;  
             wpipe     (MEM_PIPE_LEN-1).pid <= INSTR_MEM;
             wpipe     (MEM_PIPE_LEN-1).reg <= afterD.reg0;             
             scoreboard(afterD.reg0)        <= MEM_PIPE_LEN;
@@ -740,7 +752,7 @@ BEGIN
     ------------------------------ control unit ---------------------------- 
     if halt or bubble then
       ip <= ip;
-    elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
+    elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) then
     
       if afterD.code(2 downto 0) = C_JMP  then
         ip <= to_uint(opB);          -- JMP, Jump Absolute Addr

@@ -602,14 +602,13 @@ BEGIN
   main : process(clk,rst)
   
   -------------- fetch input ----------------
-  variable cmdF     : Instruction;
-  variable rawCmdF  : WORD;             
+  variable cmdF    : Instruction;
+  variable rawCmdF : WORD;             
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
   -------------- alu input and internal ----------------  
   variable invalidateNow : boolean := false;
-  variable haltNow       : boolean := false;
   -------------- alu input and internal ----------------
   
   -------------- scoreboard ----------------
@@ -630,11 +629,7 @@ BEGIN
    
     ------------------------------ instruction fetch and pipeline basics ------------------------------   
     rawCmdF := program(ip);
-    cmdF    := ToInstruction(rawCmdF);
-    
-    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT); 
-    bubble  := false;
-    
+    cmdF    := ToInstruction(rawCmdF);    
     ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
     
     -- (1) scoreboard common tick
@@ -659,7 +654,8 @@ BEGIN
     end if;
     
     -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
-    --    
+    -- 
+    bubble := false;    
     if afterD.we then                                                         
     
       case afterD.itype is    
@@ -704,7 +700,7 @@ BEGIN
           
     ------------------------------ scoreboard ------------------------------
     
-    halt       <= haltNow;
+    halt       <= halt or ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT));
     imm_value  <= rawCmdF;
     
     if bubble then 
@@ -744,7 +740,7 @@ BEGIN
    
    
     ------------------------------ control unit ---------------------------- 
-    if haltNow or bubble then
+    if halt or bubble then
       ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
     

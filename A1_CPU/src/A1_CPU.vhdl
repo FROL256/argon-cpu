@@ -13,6 +13,7 @@ package A0 is
   type PROGRAM_MEMORY   is array (0 to 255)  of WORD; 
   type REGISTER_MEMORY  is array (0 to 15)   of WORD; 
   
+  subtype PIPE_ID_TYPE     is STD_LOGIC_VECTOR (1 downto 0);
   subtype INSTR_MEM_TYPE   is STD_LOGIC_VECTOR (1 downto 0);
   subtype ALU_MEM_TYPE     is STD_LOGIC_VECTOR (3 downto 0);
   subtype WHOLE_INSTR_CODE is STD_LOGIC_VECTOR (5 downto 0);
@@ -22,20 +23,20 @@ package A0 is
   constant MAX_PIPE_LEN    : integer := 3;                                      -- allow max 3 stages of the pipeline, can be changed easily.
   subtype  PIPE_COUNT_T is integer range 0 to MAX_PIPE_LEN;                     -- per register counter type
  
-  
-  type SCOREBOARD_ELEM is record
-    wbn  : STD_LOGIC;             -- write back now
-    cmdt : INSTR_MEM_TYPE;        -- command type
+  type PIPE_ELEM is record
+    wbn : boolean;         -- write back now
+    pid : PIPE_ID_TYPE;    -- pipe id
+    reg : REGT;
   end record;
   
-  type     SCOREBOARD_TYPE is array (0 to REGT'high)    of PIPE_COUNT_T;     -- array of per-register counters
-  type     SCOREBOARD_FIFO is array (0 to MAX_PIPE_LEN) of SCOREBOARD_ELEM;  -- fifo to solve Write Back structural hazard and store command pipe id
+  type     SCOREBOARD_TYPE is array (0 to REGT'high)    of PIPE_COUNT_T;  -- array of per-register counters
+  type     SCOREBOARD_FIFO is array (0 to MAX_PIPE_LEN) of PIPE_ELEM;     -- fifo to solve Write Back structural hazard and store command pipe id
   
   constant ALUI_PIPE_LEN : PIPE_COUNT_T := 1;
   constant MEM_PIPE_LEN  : PIPE_COUNT_T := 1;
   
-  constant SCOREBOARD_ZERO_ELEM : SCOREBOARD_ELEM := (wbn => '0', cmdt => "00");
-  constant SCOREBOARD_ZERO      : PIPE_COUNT_T := 0; 
+  constant PIPE_ZERO_ELEM  : PIPE_ELEM    := (wbn => false, pid => "00", reg => 0);
+  constant SCOREBOARD_ZERO : PIPE_COUNT_T := 0; 
   -----------------------------------------------------------------------------------------------------------------------
   
   type testtype is array (1 to 26) of string(1 to 24);
@@ -103,10 +104,10 @@ package A0 is
   --  65536   
   -- ----------------------> so, I-type instructions take 2 clock cycles in simple implementation
   
-  constant INSTR_ALUI : INSTR_MEM_TYPE := "00";
-  constant INSTR_MEM  : INSTR_MEM_TYPE := "10"; 
-  constant INSTR_CNTR : INSTR_MEM_TYPE := "01";
-  constant INSTR_ALUF : INSTR_MEM_TYPE := "11";
+  constant INSTR_ALUI : PIPE_ID_TYPE := "00";
+  constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
+  constant INSTR_CNTR : PIPE_ID_TYPE := "01";
+  constant INSTR_ALUF : PIPE_ID_TYPE := "11";
   
   -- ALUI: 
   --
@@ -141,7 +142,7 @@ package A0 is
     reg2    : REGT; 
     imm     : boolean;                      -- immediate flag          
     we      : boolean;                      -- write enable
-    itype   : STD_LOGIC_VECTOR(1 downto 0); -- instruction type/pipe_id  
+    itype   : PIPE_ID_TYPE;                    -- instruction type/pipe_id  
     code    : STD_LOGIC_VECTOR(3 downto 0); -- instruction op-code   
     memOffs : STD_LOGIC_VECTOR(7 downto 0); -- used only by memory instructions 
     flags   : Flags;                        -- predicates
@@ -163,9 +164,9 @@ package A0 is
   
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
-  function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD;
-  function GetOpA(afterD : Instruction; afterX : Instruction; xRes : WORD; imm_value : WORD) return WORD;
-  function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD;
+  function GetRes(rtype  : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD;
+  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
+  function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   
   function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE;
   function GetAluOp(cmdX : Instruction) return ALU_MEM_TYPE;
@@ -263,20 +264,20 @@ package body A0 is
     
   end GetWriteEnableBit;
  
-  function GetRes(afterX : Instruction; aluOut : WORD; memOut : WORD) return WORD is
+  function GetRes(rtype : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD is
   begin 
-   if afterX.itype = INSTR_ALUI then
+   if rtype = INSTR_ALUI then
      return aluOut;
    else
      return memOut;
    end if; 
   end GetRes;
  
-  function GetOpA(afterD : Instruction; afterX : Instruction; xRes : WORD; imm_value : WORD) return WORD is
+  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD is
     variable xA : WORD;
   begin 
   
-    if afterX.reg0 = afterD.reg1 and afterX.we then   -- bypass result from X to op1
+    if afterX.reg = afterD.reg1 and afterX.wbn then   -- bypass result from X to op1
       xA := xRes;
     else 
       xA := afterD.op1;
@@ -294,10 +295,10 @@ package body A0 is
     
   end GetOpA;
   
-  function GetOpB(afterD : Instruction; afterX : Instruction; xRes : WORD) return WORD is
+  function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD is
     variable xA : WORD;
   begin 
-    if afterX.reg0 = afterD.reg2 and not afterD.imm and afterX.we then  -- bypass result from X to op2 and ignore bypassing second op for immediate commands
+    if afterX.reg = afterD.reg2 and not afterD.imm and afterX.wbn then  -- bypass result from X to op2 and ignore bypassing second op for immediate commands
       return xRes;
     else 
       return afterD.op2;
@@ -410,7 +411,6 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal afterF : Instruction := CMD_NOP; 
   signal afterD : Instruction := CMD_NOP; 
-  signal afterX : Instruction := CMD_NOP;
   
   signal program  : PROGRAM_MEMORY  := (others => x"00000000"); -- in real implementation this should be out of chip
   signal regs     : REGISTER_MEMORY := (others => x"00000000");
@@ -430,7 +430,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal memReady  : std_logic := '0';  
   
   signal scoreboard : SCOREBOARD_TYPE := (others => SCOREBOARD_ZERO);
-  signal wfifo      : SCOREBOARD_FIFO := (others => SCOREBOARD_ZERO_ELEM);
+  signal wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -470,9 +470,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   
 BEGIN 
   
-  opR <= GetRes(afterX, aluOut, memOut);
-  opA <= GetOpA(afterD, afterX, opR, imm_value);
-  opB <= GetOpB(afterD, afterX, opR);
+  opR <= GetRes(wpipe(0).pid, aluOut, memOut);
+  opA <= GetOpA(afterD, wpipe(0), opR, imm_value);
+  opB <= GetOpB(afterD, wpipe(0), opR);
   
   ALU : A1_ALU PORT MAP (clock    => clk, 
                          reset    => rst, 
@@ -604,8 +604,7 @@ BEGIN
   -------------- fetch input ----------------
   variable cmdF     : Instruction;
   variable rawCmdF  : WORD;             
-  variable bubble   : boolean := false;
-  variable bubble2  : boolean := false;
+  variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
   -------------- alu input and internal ----------------  
@@ -625,7 +624,6 @@ BEGIN
     ip     <= 0;
     afterF <= CMD_NOP; 
     afterD <= CMD_NOP; 
-    afterX <= CMD_NOP; 
     halt   <= false;
      
   elsif rising_edge(clk) then     
@@ -634,16 +632,15 @@ BEGIN
     rawCmdF := program(ip);
     cmdF    := ToInstruction(rawCmdF);
     
-    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT);   
-    bubble  := haltNow; 
-    bubble2 := false;
+    haltNow := (cmdF.itype = INSTR_CNTR) and (cmdF.code(2 downto 0) = C_HLT); 
+    bubble  := false;
     
     ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
     
     -- (1) scoreboard common tick
     --
     for i in 0 to MAX_PIPE_LEN-1 loop
-      wfifo(i) <= wfifo(i+1);
+      wpipe (i) <= wpipe (i+1);
     end loop;
       
     for j in 0 to REGT'high loop
@@ -654,36 +651,46 @@ BEGIN
       end if;
     end loop;
     
+    -- here we have to deal with flags values and predicate commands
+    --
+    invalidateNow := false;
+    if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
+      invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
+    end if;
+    
     -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
     --    
-    if afterF.we then                                                         
+    if afterD.we then                                                         
     
-      case afterF.itype is    
+      case afterD.itype is    
         when INSTR_ALUI => 
-          if wfifo    (ALUI_PIPE_LEN+1).wbn = '0' then            --- identify if there is no WriteBack control hazard 
-            wfifo     (ALUI_PIPE_LEN).wbn  <= '1'; 
-            wfifo     (ALUI_PIPE_LEN).cmdt <= INSTR_ALUI;
-            scoreboard(afterF.reg0)        <= ALUI_PIPE_LEN;            
+          if wpipe    (ALUI_PIPE_LEN  ).wbn = false then            --- identify if there is no WriteBack control hazard 
+            wpipe     (ALUI_PIPE_LEN-1).wbn <= not invalidateNow; 
+            wpipe     (ALUI_PIPE_LEN-1).pid <= INSTR_ALUI;
+            wpipe     (ALUI_PIPE_LEN-1).reg <= afterD.reg0; 
+            scoreboard(afterD.reg0)         <= ALUI_PIPE_LEN;            
           else
-            bubble2 := true;                                 
+            bubble := true;                                 
           end if;                          
         
         when INSTR_MEM  => 
-          if wfifo   (MEM_PIPE_LEN+1).wbn = '0' then             --- identify if there is no WriteBack control hazard
-            wfifo    (MEM_PIPE_LEN).wbn  <= '1';  
-            wfifo    (MEM_PIPE_LEN).cmdt <= INSTR_MEM; 
-            scoreboard(afterF.reg0)      <= MEM_PIPE_LEN;
+          if wpipe    (MEM_PIPE_LEN  ).wbn = false then             --- identify if there is no WriteBack control hazard
+            wpipe     (MEM_PIPE_LEN-1).wbn <= not invalidateNow;  
+            wpipe     (MEM_PIPE_LEN-1).pid <= INSTR_MEM;
+            wpipe     (MEM_PIPE_LEN-1).reg <= afterD.reg0;             
+            scoreboard(afterD.reg0)        <= MEM_PIPE_LEN;
           else
-            bubble2 := true;                                  
+            bubble := true;                                  
           end if;                          
           
         when INSTR_CNTR => 
-          if wfifo    (2).wbn = '0' then                          --- identify if there is no WriteBack control hazard
-            wfifo     (1).wbn       <= '1'; 
-            wfifo     (1).cmdt      <= INSTR_CNTR; 
-            scoreboard(afterF.reg0) <= 1;
+          if wpipe     (1).wbn = false then                         --- identify if there is no WriteBack control hazard
+            wpipe      (0).wbn      <= wpipe(0).wbn; 
+            wpipe      (0).pid      <= INSTR_CNTR; 
+            wpipe      (0).reg      <= 0;  
+            scoreboard(afterD.reg0) <= 0;
           else
-            bubble2 := true;                                  
+            bubble := true;                                  
           end if;
           
         -- when INSTR_ALUF => 
@@ -694,44 +701,28 @@ BEGIN
       end case;
       
     end if;
-      
+          
     ------------------------------ scoreboard ------------------------------
     
     halt       <= haltNow;
     imm_value  <= rawCmdF;
     
-    if bubble or bubble2 or afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
-      afterF <= CMD_NOP;
-    else
-      afterF <= cmdF;
-    end if;
-    
-    -- 0 1 2 3
-    -- F D X W
-    --
-    
-    if bubble2 then 
+    if bubble then 
+      afterF    <= afterF;
       afterD    <= afterD;
-      afterX    <= CMD_NOP;
     else  
-      afterD    <= afterF; 
-      afterD.we <= GetWriteEnableBit(afterF);
-      afterX    <= afterD;
-      
-      -- here we have to deal with flags values and predicate commands
-      --
-      invalidateNow := false;
-      if afterD.flags.N or afterD.flags.Z or afterD.flags.LT or afterD.flags.P then       
-        invalidateNow := InvalidateCmdIfFlagsDifferent(afterD.flags, flags_Z, flags_LT, flags_P);
-        afterX.invalid <= invalidateNow;
-        afterX.we      <= afterD.we and not invalidateNow; -- disable write to reg file if command is invalid
+      if afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
+        afterF <= CMD_NOP;
+      else
+        afterF <= cmdF;
       end if;
-      
+      afterD    <= afterF; 
+      afterD.we <= GetWriteEnableBit(afterF);     
     end if;
     
     ------------------------------ register fetch and bypassing from X to D ---------------------------
     
-    if afterX.reg0 = afterF.reg1 and afterX.we then     -- bypass result from X to op1
+    if wpipe(0).reg = afterF.reg1 and wpipe(0).wbn then -- bypass result from X to op1
       afterD.op1 <= opR; 
     else  
       afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
@@ -741,10 +732,10 @@ BEGIN
       afterD.op2 <= rawCmdF; 
     else       
       
-      if afterX.reg0 = afterF.reg2 and afterX.we then   -- bypass result from X to op2
+      if wpipe(0).reg = afterF.reg2 and wpipe(0).wbn then   -- bypass result from X to op2
         afterD.op2 <= opR; 
       else 
-        afterD.op2 <= regs(afterF.reg2);                -- ok, read from register file
+        afterD.op2 <= regs(afterF.reg2);                    -- ok, read from register file
       end if;    
       
     end if;
@@ -753,7 +744,7 @@ BEGIN
    
    
     ------------------------------ control unit ---------------------------- 
-    if bubble or bubble2 then
+    if haltNow or bubble then
       ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidateNow) then
     
@@ -769,8 +760,8 @@ BEGIN
     ------------------------------ control unit ---------------------------- 
     
     ------------------------------ write back ------------------------------   
-    if afterX.we and not afterX.invalid then
-      regs(afterX.reg0) <= opR;  
+    if wpipe(0).wbn then
+      regs(wpipe(0).reg) <= opR;  
     end if;
     ------------------------------ write back ------------------------------ 
    

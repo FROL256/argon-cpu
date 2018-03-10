@@ -331,7 +331,6 @@ package body A0 is
     end if;
   end ToStdLogic;    
   
-  
   function ToBoolean(L: std_logic) return BOOLEAN is
   begin
     if L = '1' then
@@ -640,24 +639,25 @@ BEGIN
     bubble2 := false;
     
     ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
+    
+    -- (1) scoreboard common tick
+    --
+    for i in 0 to MAX_PIPE_LEN-1 loop
+      wfifo(i) <= wfifo(i+1);
+    end loop;
+      
+    for j in 0 to REGT'high loop
+      if scoreboard(j) = 0 then
+        scoreboard(j) <= 0;
+      else
+        scoreboard(j) <= scoreboard(j)-1;
+      end if;
+    end loop;
+    
+    -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
+    --    
     if afterF.we then                                                         
     
-      -- (1) scoreboard common tick
-      --
-      for i in 0 to MAX_PIPE_LEN-1 loop
-        wfifo(i) <= wfifo(i+1);
-      end loop;
-      
-      for j in 0 to REGT'high loop
-        if scoreboard(j) = 0 then
-          scoreboard(j) <= 0;
-        else
-          scoreboard(j) <= scoreboard(j)-1;
-        end if;
-      end loop;
-    
-      -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
-      --
       case afterF.itype is    
         when INSTR_ALUI => 
           if wfifo    (ALUI_PIPE_LEN+1).wbn = '0' then            --- identify if there is no WriteBack control hazard 

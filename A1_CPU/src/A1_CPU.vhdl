@@ -146,14 +146,13 @@ package A0 is
     code    : STD_LOGIC_VECTOR(3 downto 0); -- instruction op-code   
     memOffs : STD_LOGIC_VECTOR(7 downto 0); -- used only by memory instructions 
     flags   : Flags;                        -- predicates
-    invalid : boolean;                      -- used later if instruction marked invalid due to predicates or cache miss
     op1     : WORD;
     op2     : WORD;
     res     : WORD;
   end record;        
   
   constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, 
-                                     memOffs => x"00", flags => (others => false), invalid => false,
+                                     memOffs => x"00", flags => (others => false), 
                                      op1 => x"00000000", op2 => x"00000000", res => x"00000000",
                                      cmd => DA_NOP);
   
@@ -234,7 +233,6 @@ package body A0 is
       cmd.flags.CF := ToBoolean(cmd.memOffs(7));
     end if;
     
-    cmd.invalid  := false;  
     cmd.flags.N  := ToBoolean(data(3));           -- last 4 bits for flags
     cmd.flags.Z  := ToBoolean(data(2));
     cmd.flags.LT := ToBoolean(data(1));
@@ -307,7 +305,7 @@ package body A0 is
   
   function GetMemOp(cmdX : Instruction) return INSTR_MEM_TYPE is
   begin 
-   if cmdX.itype = INSTR_MEM and not cmdX.invalid then 
+   if cmdX.itype = INSTR_MEM then -- #TODO: and command is valid !!! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! THIS IS A BUG!!!!!
      return cmdX.code(1 downto 0);    
    else
      return M_NOP;     
@@ -316,7 +314,7 @@ package body A0 is
   
   function GetAluOp(cmdX : Instruction) return ALU_MEM_TYPE is
   begin
-   if cmdX.itype = INSTR_ALUI and not cmdX.invalid then 
+   if cmdX.itype = INSTR_ALUI then 
      return cmdX.code(3 downto 0);    
    else
      return A_NOP;     

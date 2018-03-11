@@ -147,12 +147,11 @@ package A0 is
     flags   : Flags;                        -- predicates
     op1     : WORD;
     op2     : WORD;
-    res     : WORD;
   end record;        
   
   constant CMD_NOP : Instruction := (imm => false, we=>false, code => "0000", itype=> "00", reg0 => 0, reg1 => 0, reg2 => 0, 
                                      memOffs => x"00", flags => (others => false), 
-                                     op1 => x"00000000", op2 => x"00000000", res => x"00000000",
+                                     op1 => x"00000000", op2 => x"00000000", 
                                      cmd => DA_NOP);
   
   function ToInstruction(data : WORD) return Instruction; 
@@ -160,6 +159,8 @@ package A0 is
   function ToBoolean(L: std_logic) return BOOLEAN; 
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   function InvalidCommand(afterD : Instruction; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
+  function NeedReg1(cmd : Instruction) return boolean;
+  function NeedReg2(cmd : Instruction) return boolean;
   
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
@@ -378,6 +379,16 @@ package body A0 is
     end if;
   end InvalidCommand;
   
+  function NeedReg1(cmd : Instruction) return boolean is 
+  begin
+    return not ( (cmd.itype = INSTR_MEM) and (cmd.code(1 downto 0) = M_LOAD) );
+  end NeedReg1;
+  
+  function NeedReg2(cmd : Instruction) return boolean is 
+  begin
+    return not cmd.imm;
+  end NeedReg2;
+  
 end A0;
 
 
@@ -396,8 +407,8 @@ USE work.UTILS.all;
 USE work.A0.all;    
 USE work.ATESTS.all;
 
-use STD.textio.all;          -- for reading files
-use ieee.std_logic_textio.all;     -- for reading files
+use STD.textio.all;             -- for reading files
+use ieee.std_logic_textio.all;  -- for reading files
 
 ENTITY A1_CPU IS
   PORT(   
@@ -631,7 +642,6 @@ BEGIN
   variable j       : REGT         := 0;
   variable no_waw  : boolean      := false;
   variable plen    : PIPE_COUNT_T := 0;
-  variable isload  : boolean      := false;
   -------------- scoreboard ----------------
   
   begin           
@@ -648,7 +658,7 @@ BEGIN
        
     ------------------------------ scoreboard ------------------------------  
     
-    -- (1) scoreboard common tick
+    -- scoreboard tick
     --
     for i in 0 to MAX_PIPE_LEN-1 loop
       wpipe (i) <= wpipe (i+1);
@@ -662,14 +672,18 @@ BEGIN
       end if;
     end loop;
     
-    -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
-    -- 
-    isload := (afterD.itype = INSTR_MEM) and (afterD.code(1 downto 0) = M_LOAD);
-    bubble := ((scoreboard(afterD.reg1) > 1) and not isload) or (scoreboard(afterD.reg2) > 1); -- if input registers are already written (0) or result can be bypassed (1)    
+    -- try to issue command in the pipeline; if can't set "bubble := true;"
+    -- (0) in scoreboard means input registers are already written; 
+    -- (1) in scoreboard means result can be bypassed; 
+    -- (2 and greater) in scoreboard means result is not ready.
+    --
+    bubble := ( (scoreboard(afterD.reg1) > 1 and NeedReg1(afterD) ) or 
+                (scoreboard(afterD.reg2) > 1 and NeedReg2(afterD) ) );    
+                
     if afterD.we and not bubble then                                                         
       
-      plen   := pipe_len(to_uint(afterD.itype));   -- 
-      no_waw := (scoreboard(afterD.reg0) <= plen); -- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok
+      plen   := pipe_len(to_uint(afterD.itype));    --- 
+      no_waw := (scoreboard(afterD.reg0) <= plen);  --- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok
       
       if wpipe(plen  ).wbn = false and no_waw then  --- identify if there is no WriteBack control hazard 
         wpipe (plen-1).wbn      <= not invalidAfterD;  
@@ -717,10 +731,10 @@ BEGIN
       if wpipe(0).reg = afterF.reg1 and wpipe(0).wbn then -- bypass result from X to op1
         afterD.op1 <= opR; 
       else  
-        afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
+        afterD.op1 <= regs(afterF.reg1);                      -- ok, read from register file
       end if; 
       
-      if afterF.imm then                                  -- read from instruction memory and ignore bypassing if command is immediate
+      if afterF.imm then                                      -- read from instruction memory and ignore bypassing if command is immediate
         afterD.op2 <= rawCmdF; 
       else       
         

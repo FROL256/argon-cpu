@@ -663,8 +663,8 @@ BEGIN
     
     -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
     -- 
-    bubble := false;    
-    if afterD.we then                                                         
+    bubble := (scoreboard(afterF.reg1) > 1) or (scoreboard(afterF.reg2) > 1); -- if input registers are already written (0) or result can be bypassed (1)    
+    if afterD.we and not bubble then                                                         
       
       plen   := pipe_len(to_uint(afterD.itype));   -- 
       no_waw := (scoreboard(afterD.reg0) <= plen); -- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok

@@ -18,10 +18,9 @@ package A0 is
   subtype ALU_MEM_TYPE     is STD_LOGIC_VECTOR (3 downto 0);
   subtype WHOLE_INSTR_CODE is STD_LOGIC_VECTOR (5 downto 0);
   
-  -----------------------------------------------------------------------------------------------------------------------
-  ---- scoreboard
-  constant MAX_PIPE_LEN    : integer := 3;                                      -- allow max 3 stages of the pipeline, can be changed easily.
-  subtype  PIPE_COUNT_T is integer range 0 to MAX_PIPE_LEN;                     -- per register counter type
+  ----------------------------------------------------------------------------------------------------------------------- scoreboard parameters
+  constant MAX_PIPE_LEN : integer := 3;                       -- allow max 3 stages of the pipeline, can be changed easily.
+  subtype  PIPE_COUNT_T is integer range 0 to MAX_PIPE_LEN-1; -- per register counter type
  
   type PIPE_ELEM is record
     wbn : boolean;         -- write back now
@@ -30,14 +29,19 @@ package A0 is
   end record;
   
   type     SCOREBOARD_TYPE is array (0 to REGT'high)    of PIPE_COUNT_T;  -- array of per-register counters
+  type     SCOREBOARD_PLEN is array (0 to 3)            of PIPE_COUNT_T;  -- stores pipe length for each pipe
   type     SCOREBOARD_FIFO is array (0 to MAX_PIPE_LEN) of PIPE_ELEM;     -- fifo to solve Write Back structural hazard and store command pipe id
   
-  constant ALUI_PIPE_LEN : PIPE_COUNT_T := 1;
-  constant MEM_PIPE_LEN  : PIPE_COUNT_T := 1;
-  
+  constant ALUI_PIPE_LEN   : PIPE_COUNT_T := 1;
+  constant MEM_PIPE_LEN    : PIPE_COUNT_T := 1;
+  constant CTR_PIPE_LEN    : PIPE_COUNT_T := 1;
   constant PIPE_ZERO_ELEM  : PIPE_ELEM    := (wbn => false, pid => "00", reg => 0);
-  constant SCOREBOARD_ZERO : PIPE_COUNT_T := 0; 
-  -----------------------------------------------------------------------------------------------------------------------
+  ----------------------------------------------------------------------------------------------------------------------- scoreboard parameters
+  
+  constant INSTR_ALUI : PIPE_ID_TYPE := "00";
+  constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
+  constant INSTR_CNTR : PIPE_ID_TYPE := "01";
+  constant INSTR_ALUF : PIPE_ID_TYPE := "11";
   
   type testtype is array (1 to 26) of string(1 to 24);
  
@@ -103,11 +107,6 @@ package A0 is
   --  add R0, R1, 0 
   --  65536   
   -- ----------------------> so, I-type instructions take 2 clock cycles in simple implementation
-  
-  constant INSTR_ALUI : PIPE_ID_TYPE := "00";
-  constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
-  constant INSTR_CNTR : PIPE_ID_TYPE := "01";
-  constant INSTR_ALUF : PIPE_ID_TYPE := "11";
   
   -- ALUI: 
   --
@@ -439,8 +438,9 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal halt      : boolean   := false;
   signal memReady  : std_logic := '0';  
   
-  signal scoreboard : SCOREBOARD_TYPE := (others => SCOREBOARD_ZERO);
-  signal wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
+  signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
+  signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
+  constant pipe_len   : SCOREBOARD_PLEN := (ALUI_PIPE_LEN, MEM_PIPE_LEN, CTR_PIPE_LEN, 0);
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -622,15 +622,15 @@ BEGIN
   main : process(clk,rst)
   
   -------------- fetch input ----------------
-  variable cmdF    : Instruction;
   variable rawCmdF : WORD;             
   variable bubble  : boolean := false;
   -------------- fetch input ---------------- 
   
-  
   -------------- scoreboard ----------------
-  variable i : PIPE_COUNT_T := 0;
-  variable j : REGT         := 0;
+  variable i       : PIPE_COUNT_T := 0;
+  variable j       : REGT         := 0;
+  variable no_waw  : boolean      := false;
+  variable plen    : PIPE_COUNT_T := 0;
   -------------- scoreboard ----------------
   
   begin           
@@ -644,10 +644,8 @@ BEGIN
      
   elsif rising_edge(clk) then     
    
-    ------------------------------ instruction fetch and pipeline basics ------------------------------   
-    rawCmdF := program(ip);
-    cmdF    := ToInstruction(rawCmdF);    
-    ------------------------------ scoreboard ------------------------------ #TODO: check if scoreboard(afterF.reg0) is gt 1 (0 ?). Must bubble in this case. 
+       
+    ------------------------------ scoreboard ------------------------------  
     
     -- (1) scoreboard common tick
     --
@@ -667,51 +665,29 @@ BEGIN
     -- 
     bubble := false;    
     if afterD.we then                                                         
-    
-      case afterD.itype is    
-        when INSTR_ALUI => 
-          if wpipe    (ALUI_PIPE_LEN  ).wbn = false then            --- identify if there is no WriteBack control hazard 
-            wpipe     (ALUI_PIPE_LEN-1).wbn <= not invalidAfterD; 
-            wpipe     (ALUI_PIPE_LEN-1).pid <= INSTR_ALUI;
-            wpipe     (ALUI_PIPE_LEN-1).reg <= afterD.reg0; 
-            scoreboard(afterD.reg0)         <= ALUI_PIPE_LEN;            
-          else
-            bubble := true;                                 
-          end if;                          
-        
-        when INSTR_MEM  => 
-          if wpipe    (MEM_PIPE_LEN  ).wbn = false then             --- identify if there is no WriteBack control hazard
-            wpipe     (MEM_PIPE_LEN-1).wbn <= not invalidAfterD;  
-            wpipe     (MEM_PIPE_LEN-1).pid <= INSTR_MEM;
-            wpipe     (MEM_PIPE_LEN-1).reg <= afterD.reg0;             
-            scoreboard(afterD.reg0)        <= MEM_PIPE_LEN;
-          else
-            bubble := true;                                  
-          end if;                          
-          
-        when INSTR_CNTR => 
-          if wpipe     (1).wbn = false then                         --- identify if there is no WriteBack control hazard
-            wpipe      (0).wbn      <= wpipe(0).wbn; 
-            wpipe      (0).pid      <= INSTR_CNTR; 
-            wpipe      (0).reg      <= 0;  
-            scoreboard(afterD.reg0) <= 0;
-          else
-            bubble := true;                                  
-          end if;
-          
-        -- when INSTR_ALUF => 
-        -- 
-        when others     => 
-          null;
-          
-      end case;
+      
+      plen   := pipe_len(to_uint(afterD.itype));   -- 
+      no_waw := (scoreboard(afterD.reg0) <= plen); -- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok
+      
+      if wpipe(plen  ).wbn = false and no_waw then  --- identify if there is no WriteBack control hazard 
+        wpipe (plen-1).wbn       <= not invalidAfterD;  
+        wpipe (plen-1).reg       <= afterD.reg0;              
+        wpipe (plen-1).pid       <= afterD.itype;                             
+        scoreboard(afterD.reg0)  <= plen;             
+      else                                                            
+        bubble := true;                                               
+      end if;                                              
       
     end if;
           
     ------------------------------ scoreboard ------------------------------
     
-    halt       <= halt or ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT));
+    
+    ------------------------------ instruction fetch and pipeline basics ------------------------------   
+    rawCmdF := program(ip);
+
     imm_value  <= rawCmdF;
+    halt       <= halt or ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT));
     
     if bubble then 
       afterF    <= afterF;
@@ -720,7 +696,7 @@ BEGIN
       if afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
         afterF <= CMD_NOP;
       else
-        afterF <= cmdF;
+        afterF <= ToInstruction(rawCmdF);
       end if;
       afterD    <= afterF; 
       afterD.we <= GetWriteEnableBit(afterF);     

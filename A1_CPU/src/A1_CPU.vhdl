@@ -695,23 +695,13 @@ BEGIN
       afterF    <= afterF;
       afterD    <= afterD;
       
-      -- #TODO check bypass here. CRAPPY CASE !!!
+      -- if stall happened then there is an opportunity to loose register that is not yet written to register file. 
+      -- This happens due to we don't actually repeat reading from register file when "afterD <= afterD" happened.
+      -- So even if we does have correct value in the register file, we will not read it during simple "afterD <= afterD" assignment, right? :)
+      -- Thus, we must check result each clock during stall and bypass it from opR to afterD.op1 or afterD.op2 if possible.     
       --
-      if wpipe(0).reg = afterD.reg1 and wpipe(0).wbn then   -- bypass result from X to op1
-        afterD.op1 <= opR;
-      end if;
-      
-      if (afterD.itype = INSTR_MEM) then                    -- alter second op to compute address if mem istruction occured       
-        if afterD.imm then 
-          afterD.op1 <= imm_value;
-        else
-          afterD.op1 <= x"000000" & afterD.memOffs(7 downto 0);
-        end if;
-      end if;
-      
-      if wpipe(0).reg = afterD.reg2 and not afterD.imm and wpipe(0).wbn then  -- bypass result from X to op2 and ignore bypassing second op for immediate commands
-        afterD.op2 <= opR;
-      end if;    
+      afterD.op1 <= GetOpA(afterD, wpipe(0), opR, imm_value);
+      afterD.op2 <= GetOpB(afterD, wpipe(0), opR);
       
     else  
     

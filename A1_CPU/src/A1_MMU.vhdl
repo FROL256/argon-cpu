@@ -44,13 +44,14 @@ END A1_MMU;
 
 ARCHITECTURE RTL OF A1_MMU IS 
 
-  signal memory : L1_MEMORY := (others => x"00000000");
-   
+  signal memory  : L1_MEMORY := (others => x"00000000");
+  signal addr    : integer   := 0;
+  signal optype1 : STD_LOGIC_VECTOR(1 downto 0) := M_NOP;
+  signal input1  : STD_LOGIC_VECTOR(31 downto 0);
+  
 begin
 
   p0 : process(clock,reset)
-  
-  variable addr : integer;
   
   begin
 
@@ -60,15 +61,17 @@ begin
       memory <= (others => x"00000000");
     elsif rising_edge(clock) then     
 
-      addr := to_sint(addr1) + to_sint(addr2);
+      addr    <= to_sint(addr1) + to_sint(addr2);
+      optype1 <= optype;
+      input1  <= input;
     
-      case optype is
+      case optype1 is
       
         when M_LOAD  => output       <= memory(addr);   
       
-        when M_STORE => memory(addr) <= input;      
+        when M_STORE => memory(addr) <= input1;      
                     
-        when others  => output       <= input; 
+        when others  => output       <= input1; 
       
       end case;
      

@@ -33,14 +33,14 @@ package A0 is
   type     SCOREBOARD_FIFO is array (0 to MAX_PIPE_LEN) of PIPE_ELEM;     -- fifo to solve Write Back structural hazard and store command pipe id
   
   constant ALUI_PIPE_LEN   : PIPE_COUNT_T := 1;
-  constant MEM_PIPE_LEN    : PIPE_COUNT_T := 1;
+  constant MEM_PIPE_LEN    : PIPE_COUNT_T := 2;
   constant CTR_PIPE_LEN    : PIPE_COUNT_T := 1;
   constant PIPE_ZERO_ELEM  : PIPE_ELEM    := (wbn => false, pid => "00", reg => 0);
   ----------------------------------------------------------------------------------------------------------------------- scoreboard parameters
   
   constant INSTR_ALUI : PIPE_ID_TYPE := "00";
-  constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
   constant INSTR_CNTR : PIPE_ID_TYPE := "01";
+  constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
   constant INSTR_ALUF : PIPE_ID_TYPE := "11";
   
   type testtype is array (1 to 26) of string(1 to 24);
@@ -440,7 +440,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
   signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
-  constant pipe_len   : SCOREBOARD_PLEN := (ALUI_PIPE_LEN, MEM_PIPE_LEN, CTR_PIPE_LEN, 0);
+  constant pipe_len   : SCOREBOARD_PLEN := (ALUI_PIPE_LEN, CTR_PIPE_LEN, MEM_PIPE_LEN, 0);
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -562,7 +562,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low to binFiles'high loop -- 
+  for testId in binFiles'low to binFiles'high loop -- binFiles'low
       
    clk <= '0';
    rst <= '0';
@@ -631,6 +631,7 @@ BEGIN
   variable j       : REGT         := 0;
   variable no_waw  : boolean      := false;
   variable plen    : PIPE_COUNT_T := 0;
+  variable isload  : boolean      := false;
   -------------- scoreboard ----------------
   
   begin           
@@ -663,17 +664,18 @@ BEGIN
     
     -- (2) try to issue command in the pipeline; if can't set "bubble := true;"
     -- 
-    bubble := (scoreboard(afterF.reg1) > 1) or (scoreboard(afterF.reg2) > 1); -- if input registers are already written (0) or result can be bypassed (1)    
+    isload := (afterD.itype = INSTR_MEM) and (afterD.code(1 downto 0) = M_LOAD);
+    bubble := ((scoreboard(afterD.reg1) > 1) and not isload) or (scoreboard(afterD.reg2) > 1); -- if input registers are already written (0) or result can be bypassed (1)    
     if afterD.we and not bubble then                                                         
       
       plen   := pipe_len(to_uint(afterD.itype));   -- 
       no_waw := (scoreboard(afterD.reg0) <= plen); -- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok
       
       if wpipe(plen  ).wbn = false and no_waw then  --- identify if there is no WriteBack control hazard 
-        wpipe (plen-1).wbn       <= not invalidAfterD;  
-        wpipe (plen-1).reg       <= afterD.reg0;              
-        wpipe (plen-1).pid       <= afterD.itype;                             
-        scoreboard(afterD.reg0)  <= plen;             
+        wpipe (plen-1).wbn      <= not invalidAfterD;  
+        wpipe (plen-1).reg      <= afterD.reg0;              
+        wpipe (plen-1).pid      <= afterD.itype;                             
+        scoreboard(afterD.reg0) <= plen;             
       else                                                            
         bubble := true;                                               
       end if;                                              

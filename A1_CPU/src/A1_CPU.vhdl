@@ -694,7 +694,27 @@ BEGIN
     if bubble then 
       afterF    <= afterF;
       afterD    <= afterD;
+      
+      -- #TODO check bypass here. CRAPPY CASE !!!
+      --
+      if wpipe(0).reg = afterD.reg1 and wpipe(0).wbn then   -- bypass result from X to op1
+        afterD.op1 <= opR;
+      end if;
+      
+      if (afterD.itype = INSTR_MEM) then                    -- alter second op to compute address if mem istruction occured       
+        if afterD.imm then 
+          afterD.op1 <= imm_value;
+        else
+          afterD.op1 <= x"000000" & afterD.memOffs(7 downto 0);
+        end if;
+      end if;
+      
+      if wpipe(0).reg = afterD.reg2 and not afterD.imm and wpipe(0).wbn then  -- bypass result from X to op2 and ignore bypassing second op for immediate commands
+        afterD.op2 <= opR;
+      end if;    
+      
     else  
+    
       if afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
         afterF <= CMD_NOP;
       else
@@ -702,29 +722,28 @@ BEGIN
       end if;
       afterD    <= afterF; 
       afterD.we <= GetWriteEnableBit(afterF);     
-    end if;
-    
-    ------------------------------ register fetch and bypassing from X to D ---------------------------
-    
-    if wpipe(0).reg = afterF.reg1 and wpipe(0).wbn then -- bypass result from X to op1
-      afterD.op1 <= opR; 
-    else  
-      afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
-    end if; 
-    
-    if afterF.imm then                                  -- read from instruction memory and ignore bypassing if command is immediate
-      afterD.op2 <= rawCmdF; 
-    else       
       
-      if wpipe(0).reg = afterF.reg2 and wpipe(0).wbn then   -- bypass result from X to op2
-        afterD.op2 <= opR; 
-      else 
-        afterD.op2 <= regs(afterF.reg2);                    -- ok, read from register file
-      end if;    
+      ------------------------------ register fetch and bypassing from X to D ---------------------------
+      if wpipe(0).reg = afterF.reg1 and wpipe(0).wbn then -- bypass result from X to op1
+        afterD.op1 <= opR; 
+      else  
+        afterD.op1 <= regs(afterF.reg1);                  -- ok, read from register file
+      end if; 
+      
+      if afterF.imm then                                  -- read from instruction memory and ignore bypassing if command is immediate
+        afterD.op2 <= rawCmdF; 
+      else       
+        
+        if wpipe(0).reg = afterF.reg2 and wpipe(0).wbn then   -- bypass result from X to op2
+          afterD.op2 <= opR; 
+        else 
+          afterD.op2 <= regs(afterF.reg2);                    -- ok, read from register file
+        end if;    
+        
+      end if;  
+      ------------------------------ register fetch and bypassing from X to D ----------------------------
       
     end if;
-    
-    ------------------------------ register fetch and bypassing from X to D ----------------------------
    
    
     ------------------------------ control unit ---------------------------- 

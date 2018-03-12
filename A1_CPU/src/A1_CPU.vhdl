@@ -706,6 +706,7 @@ BEGIN
     halt       <= halt or ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT));
     
     if bubble then 
+    
       afterF    <= afterF;
       afterD    <= afterD;
       
@@ -714,8 +715,8 @@ BEGIN
       -- So even if we does have correct value in the register file, we will not read it during simple "afterD <= afterD" assignment, right? :)
       -- Thus, we must check result each clock during stall and bypass it from opR to afterD.op1 or afterD.op2 if possible.     
       --
-      afterD.op1 <= GetOpA(afterD, wpipe(0), opR, imm_value);
-      afterD.op2 <= GetOpB(afterD, wpipe(0), opR);
+      afterD.op1 <= opA;
+      afterD.op2 <= opB;
       
     else  
     

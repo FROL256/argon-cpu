@@ -245,22 +245,13 @@ package body A0 is
   end ToInstruction;
  
   function GetWriteEnableBit(cmd : Instruction) return boolean is
-    variable res : boolean := false;
   begin 
-  
     case cmd.itype is
-      when INSTR_ALUI =>
-        res := (cmd.code /= A_NOP) and (cmd.flags.CF = false); -- if command change flags it does not have to write the register! This is our agreement
-      when INSTR_MEM  =>
-        res := (cmd.code(1 downto 0) = M_LOAD);
-      when INSTR_CNTR =>
-        res := false;
-      when others     => 
-        res := false;
+      when INSTR_ALUI => return (cmd.code /= A_NOP) and (cmd.flags.CF = false); -- if command change flags it does not have to write the register! This is our agreement
+      when INSTR_MEM  => return (cmd.code(1 downto 0) = M_LOAD);
+      when INSTR_CNTR => return false;
+      when others     => return false;
     end case;
-    
-    return res; 
-    
   end GetWriteEnableBit;
  
   function GetRes(rtype : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD is
@@ -386,7 +377,7 @@ package body A0 is
   
   function NeedReg2(cmd : Instruction) return boolean is 
   begin
-    return not cmd.imm;
+    return not cmd.imm and not (cmd.itype = INSTR_ALUI and(cmd.code(3 downto 0) = A_MOV));
   end NeedReg2;
   
 end A0;
@@ -654,10 +645,8 @@ BEGIN
     halt   <= false;
      
   elsif rising_edge(clk) then     
-   
-       
-    ------------------------------ scoreboard ------------------------------  
-    
+        
+    ------------------------------ scoreboard ------------------------------   
     -- scoreboard tick
     --
     for i in 0 to MAX_PIPE_LEN-1 loop
@@ -678,12 +667,12 @@ BEGIN
     -- (2 and greater) in scoreboard means result is not ready.
     --
     bubble := ( (scoreboard(afterD.reg1) > 1 and NeedReg1(afterD) ) or 
-                (scoreboard(afterD.reg2) > 1 and NeedReg2(afterD) ) );    
+                (scoreboard(afterD.reg2) > 1 and NeedReg2(afterD) ) );  -- detect RAW  
                 
     if afterD.we and not bubble then                                                         
       
       plen   := pipe_len(to_uint(afterD.itype));    --- 
-      no_waw := (scoreboard(afterD.reg0) <= plen);  --- let (alu is 1, mem is 2) => (1) mem after alu is ok; (2) alu after mem is not ok
+      no_waw := (scoreboard(afterD.reg0) <= plen);  ---                 -- detect WAW
       
       if wpipe(plen  ).wbn = false and no_waw then  --- identify if there is no WriteBack control hazard 
         wpipe (plen-1).wbn      <= not invalidAfterD;  
@@ -695,9 +684,7 @@ BEGIN
       end if;                                              
       
     end if;
-          
     ------------------------------ scoreboard ------------------------------
-    
     
     ------------------------------ instruction fetch and pipeline basics ------------------------------   
     rawCmdF := program(ip);
@@ -710,10 +697,10 @@ BEGIN
       afterF    <= afterF;
       afterD    <= afterD;
       
-      -- if stall happened then there is an opportunity to loose register that is not yet written to register file. 
+      -- if stall happened then there is an opportunity to loose register that is not yet written to the register file. 
       -- This happens due to we don't actually repeat reading from register file when "afterD <= afterD" happened.
       -- So even if we does have correct value in the register file, we will not read it during simple "afterD <= afterD" assignment, right? :)
-      -- Thus, we must check result each clock during stall and bypass it from opR to afterD.op1 or afterD.op2 if possible.     
+      -- Thus, we must check result each clock during stall and bypass it from opR (via opA and opB signals) to afterD.op1 or afterD.op2 if possible.     
       --
       afterD.op1 <= opA;
       afterD.op2 <= opB;
@@ -725,6 +712,7 @@ BEGIN
       else
         afterF <= ToInstruction(rawCmdF);
       end if;
+      
       afterD    <= afterF; 
       afterD.we <= GetWriteEnableBit(afterF);     
       
@@ -749,8 +737,7 @@ BEGIN
       ------------------------------ register fetch and bypassing from X to D ----------------------------
       
     end if;
-   
-   
+    
     ------------------------------ control unit ---------------------------- 
     if halt or bubble then
       ip <= ip;
@@ -772,12 +759,10 @@ BEGIN
       regs(wpipe(0).reg) <= opR;  
     end if;
     ------------------------------ write back ------------------------------ 
-   
-   
+    
   end if; -- end of rising_edge(clk)
    
   end process main;
  
-   
 END RTL;
 

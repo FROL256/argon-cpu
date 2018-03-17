@@ -160,9 +160,7 @@ package A0 is
   function InvalidateCmdIfFlagsDifferent(cmdxflags : Flags; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   function InvalidCommand(afterD : Instruction; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   function NeedReg1(cmd : Instruction) return boolean;
-  function NeedReg2(cmd : Instruction) return boolean;
-  function ReIssueMemDueToCacheMiss(memReady : STD_LOGIC; pid : STD_LOGIC_VECTOR(1 downto 0); pid2 : STD_LOGIC_VECTOR(1 downto 0)) return boolean;
-  
+  function NeedReg2(cmd : Instruction) return boolean;  
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
   function GetRes(rtype  : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD;
@@ -381,12 +379,6 @@ package body A0 is
     return not cmd.imm and not (cmd.itype = INSTR_ALUI and(cmd.code(3 downto 0) = A_MOV));
   end NeedReg2;
   
-  function ReIssueMemDueToCacheMiss(memReady : STD_LOGIC; pid : STD_LOGIC_VECTOR(1 downto 0); pid2 : STD_LOGIC_VECTOR(1 downto 0)) return boolean is
-  begin
-    return (not ToBoolean(memReady)) and (pid = INSTR_MEM or pid2 = INSTR_MEM);  
-  end ReIssueMemDueToCacheMiss;
-   
-  
 end A0;
 
 
@@ -533,7 +525,7 @@ BEGIN
                        );    
                       
 
-  cmStall <= ReIssueMemDueToCacheMiss(memReady, wpipe(1).pid, wpipe(0).pid);                     
+  cmStall <= not ToBoolean(memReady);                    
   
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
@@ -575,7 +567,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low to binFiles'high loop -- binFiles'low
+  for testId in binFiles'low+4 to binFiles'high loop -- binFiles'low
       
    clk <= '0';
    rst <= '0';
@@ -750,10 +742,10 @@ BEGIN
     end if;
     
     ------------------------------ control unit ---------------------------- 
-    if halt or bubble then
-      ip <= ip;
-    elsif cmStall and cmStallCouter = 0 then
+    if cmStall and cmStallCouter = 0 then
       ip <= ip-4;
+    elsif halt or bubble then
+      ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) and cmStallCouter = 0 then
     
       if afterD.code(2 downto 0) = C_JMP  then

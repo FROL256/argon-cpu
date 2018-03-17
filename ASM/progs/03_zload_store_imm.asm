@@ -8,6 +8,11 @@ i, 1, m, lw,  R0, R0, R2, 254
 di, 10
 r, 1, a, add, R2, R2, R2  
 r, 1, m, lw,  R1, R0, R2, 0 
+r, 0, a, nop
+r, 0, a, nop
+r, 0, a, nop
+r, 0, a, nop
+r, 0, a, nop
 r, 0, c, hlt, R0, R0, R0
 r, 0, c, hlt, R0, R0, R0
 r, 0, c, hlt, R0, R0, R0

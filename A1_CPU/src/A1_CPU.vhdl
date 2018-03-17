@@ -161,6 +161,7 @@ package A0 is
   function InvalidCommand(afterD : Instruction; flags_Z : boolean; flags_LT : boolean; flags_P : boolean) return boolean;
   function NeedReg1(cmd : Instruction) return boolean;
   function NeedReg2(cmd : Instruction) return boolean;
+  function ReIssueMemDueToCacheMiss(memReady : STD_LOGIC; pid : STD_LOGIC_VECTOR(1 downto 0)) return boolean;
   
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
@@ -380,6 +381,12 @@ package body A0 is
     return not cmd.imm and not (cmd.itype = INSTR_ALUI and(cmd.code(3 downto 0) = A_MOV));
   end NeedReg2;
   
+  function ReIssueMemDueToCacheMiss(memReady : STD_LOGIC; pid : STD_LOGIC_VECTOR(1 downto 0)) return boolean is
+  begin
+    return (not ToBoolean(memReady)) and (pid = INSTR_MEM);  
+  end ReIssueMemDueToCacheMiss;
+   
+  
 end A0;
 
 
@@ -437,8 +444,10 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal memOut     : WORD := x"00000000"; -- MEM result 
   signal memInputOp : STD_LOGIC_VECTOR(1 downto 0) := "00";   
   
-  signal halt      : boolean   := false;
-  signal memReady  : std_logic := '0';  
+  signal halt          : boolean   := false;
+  signal memReady      : std_logic := '0'; 
+  signal cmStall       : boolean   := false; -- stall caused by cache miss; re-issue load/store instruction that cause cache miss;
+  signal cmStallCouter : integer range 0 to 3 := 0;
   
   signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
   signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
@@ -512,7 +521,8 @@ BEGIN
   
   memInputOp <= GetMemOp(afterD, invalidAfterD);
   
-  MUU: A1_MMU PORT MAP (clock  => clk, 
+  MUU: entity work.A1_MMU(TWO_CLOCK_ALWAYS) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
+              PORT MAP (clock  => clk, 
                         reset  => rst, 
                         optype => memInputOp,  
                         addr1  => opA,
@@ -521,9 +531,10 @@ BEGIN
                         output => memOut,
                         oready => memReady
                        );    
-                       
-                       
-                                             
+                      
+
+  cmStall <= ReIssueMemDueToCacheMiss(memReady, wpipe(1).pid);                     
+  
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
   
@@ -690,7 +701,7 @@ BEGIN
     rawCmdF := program(ip);
 
     imm_value  <= rawCmdF;
-    halt       <= halt or ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT));
+    halt       <= halt or ( ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT)) and (not cmStall) and (cmStallCouter = 0) );
     
     if bubble then 
     
@@ -741,21 +752,32 @@ BEGIN
     ------------------------------ control unit ---------------------------- 
     if halt or bubble then
       ip <= ip;
+    elsif cmStall and cmStallCouter = 0 then
+      ip <= ip-4;
     elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) then
     
       if afterD.code(2 downto 0) = C_JMP  then
         ip <= to_uint(opB);          -- JMP, Jump Absolute Addr
-      else
+      elsif  afterD.code(2 downto 0) = C_JRA  then
         ip <= to_uint(opB) + ip - 2; -- JRA, Jump Relative Addr
+      else
+        ip <= ip+1;                  -- CAN BE HLT if re-issue MEM.
       end if;
-    
     else
       ip <= ip+1;
     end if;    
     ------------------------------ control unit ---------------------------- 
     
     ------------------------------ write back ------------------------------   
-    if wpipe(0).wbn then
+    if cmStall and cmStallCouter = 0 then
+      cmStallCouter <= 3;
+    elsif cmStallCouter > 0 then
+      cmStallCouter <= cmStallCouter-1;
+    else
+      cmStallCouter <= 0;
+    end if;
+    
+    if wpipe(0).wbn and (not cmStall) and (cmStallCouter = 0) then
       regs(wpipe(0).reg) <= opR;  
     end if;
     ------------------------------ write back ------------------------------ 

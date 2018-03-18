@@ -167,8 +167,8 @@ package A0 is
   function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   
-  function GetMemOp(cmdX : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE;
-  function GetAluOp(cmdX : Instruction) return ALU_MEM_TYPE;
+  function GetMemOp(cmd : Instruction; isInvalid : boolean; isBusy : boolean) return INSTR_MEM_TYPE;
+  function GetAluOp(cmd : Instruction) return ALU_MEM_TYPE;
                             
 end A0;
 
@@ -294,19 +294,19 @@ package body A0 is
     end if;    
   end GetOpB;
   
-  function GetMemOp(cmdX : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE is
+  function GetMemOp(cmd : Instruction; isInvalid : boolean; isBusy : boolean) return INSTR_MEM_TYPE is
   begin 
-   if cmdX.itype = INSTR_MEM and not isInvalid then -- #TODO: test this case; create test program; it is untested currently !!!!
-     return cmdX.code(1 downto 0);    
+   if cmd.itype = INSTR_MEM and not isInvalid and not isBusy then -- #TODO: test isInvalid case; create test program; it is untested currently !!!!
+     return cmd.code(1 downto 0);    
    else
      return M_NOP;     
    end if;
   end GetMemOp;
   
-  function GetAluOp(cmdX : Instruction) return ALU_MEM_TYPE is
+  function GetAluOp(cmd : Instruction) return ALU_MEM_TYPE is
   begin
-   if cmdX.itype = INSTR_ALUI then 
-     return cmdX.code(3 downto 0);    
+   if cmd.itype = INSTR_ALUI then 
+     return cmd.code(3 downto 0);    
    else
      return A_NOP;     
    end if;
@@ -443,6 +443,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal memReady      : std_logic := '0'; 
   signal cmStall       : boolean   := false; -- stall caused by cache miss; re-issue load/store instruction that cause cache miss;
   signal cmStallCouter : integer range 0 to 3 := 0;
+  signal memIsBusy     : boolean   := false;
   
   signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
   signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
@@ -514,7 +515,9 @@ BEGIN
                          resHigh  => highValue
                          );
   
-  memInputOp <= GetMemOp(afterD, invalidAfterD);
+  cmStall    <= not ToBoolean(memReady);                    
+  memIsBusy  <= (cmStallCouter > 1);
+  memInputOp <= GetMemOp(afterD, invalidAfterD, memIsBusy);
   
   MUU: entity work.A1_MMU(CACHE_MISS_SIM) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
               PORT MAP (clock  => clk, 
@@ -526,9 +529,7 @@ BEGIN
                         output => memOut,
                         oready => memReady
                        );    
-                      
-
-  cmStall <= not ToBoolean(memReady);                    
+                     
   
   ------------------------------------ this process is only for simulation purposes ------------------------------------
   clock : process   
@@ -702,8 +703,8 @@ BEGIN
     
     if bubble then 
     
-      afterF    <= afterF;
-      afterD    <= afterD;
+      afterF <= afterF;
+      afterD <= afterD;
       
       -- if stall happened then there is an opportunity to loose register that is not yet written to the register file. 
       -- This happens due to we don't actually repeat reading from register file when "afterD <= afterD" happened.
@@ -712,6 +713,8 @@ BEGIN
       --
       afterD.op1 <= opA;
       afterD.op2 <= opB;
+      
+      ipM1 <= ipM1;
       
     else  
     
@@ -744,15 +747,15 @@ BEGIN
       end if;  
       ------------------------------ register fetch and bypassing from X to D ----------------------------
       
-    end if;
+      if afterD.itype = INSTR_MEM then 
+        ipM1 <= ip - 2;
+      else
+        ipM1 <= ipM1;
+      end if;
+      
+    end if;  
     
-    if afterD.itype = INSTR_MEM then 
-      ipM1 <= ip - 2;
-    else
-      ipM1 <= ipM1;
-    end if;
-    
-    ipM2 <= ipM1;    
+    ipM2 <= ipM1;
     
     ------------------------------ control unit ---------------------------- 
     if cmStall and cmStallCouter = 0 then                

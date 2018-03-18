@@ -114,7 +114,7 @@ begin
     
       if (optype1 = M_LOAD or optype1 = M_STORE) and (clocksToGetReady = 0) then
       
-        clocksToGetReady <= 10;
+        clocksToGetReady <= 3;
         oready           <= '0';
       
       elsif (optype1 = M_LOAD or optype1 = M_STORE) and clocksToGetReady = 1 then
@@ -136,12 +136,8 @@ begin
         clocksToGetReady <= 0;
       
       else
-      
-        if (optype1 = M_LOAD) or (optype1 = M_STORE) then
-          oready <= '0';
-        else
-          oready <= '1';
-        end if;
+ 
+        oready <= '1';
         
         if clocksToGetReady > 1 then 
           clocksToGetReady <= clocksToGetReady - 1;

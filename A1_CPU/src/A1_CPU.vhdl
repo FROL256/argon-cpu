@@ -38,14 +38,13 @@ package A0 is
   constant PIPE_ZERO_ELEM  : PIPE_ELEM    := (wbn => false, pid => "00", reg => 0);
   ----------------------------------------------------------------------------------------------------------------------- scoreboard parameters
   
-  constant CACHE_MISS_STALL_CLOCKS : integer := 5; -- We must know how long we have to wait MEM command if cache miss happened.
+  constant CACHE_MISS_STALL_CLOCKS : integer := 8; -- We must know how long we have to wait MEM command if cache miss happened.
+  constant CACHE_MISS_WAIT_CLOCKS  : integer := CACHE_MISS_STALL_CLOCKS-2;
   
   constant INSTR_ALUI : PIPE_ID_TYPE := "00";
   constant INSTR_CNTR : PIPE_ID_TYPE := "01";
   constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
   constant INSTR_ALUF : PIPE_ID_TYPE := "11";
-  
-  type testtype is array (1 to 26) of string(1 to 24);
  
   constant A_NOP   : STD_LOGIC_VECTOR(3 downto 0) := "0000";   
   constant A_SHL   : STD_LOGIC_VECTOR(3 downto 0) := "0001";  -- SLA is encoded as signed SHL
@@ -169,7 +168,7 @@ package A0 is
   function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   
-  function GetMemOp(cmd : Instruction; isInvalid : boolean; isBusy : boolean) return INSTR_MEM_TYPE;
+  function GetMemOp(cmd : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE;
   function GetAluOp(cmd : Instruction) return ALU_MEM_TYPE;
                             
 end A0;
@@ -296,9 +295,9 @@ package body A0 is
     end if;    
   end GetOpB;
   
-  function GetMemOp(cmd : Instruction; isInvalid : boolean; isBusy : boolean) return INSTR_MEM_TYPE is
+  function GetMemOp(cmd : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE is
   begin 
-   if cmd.itype = INSTR_MEM and not isInvalid and not isBusy then -- #TODO: test isInvalid case; create test program; it is untested currently !!!!
+   if cmd.itype = INSTR_MEM and not isInvalid then -- #TODO: test isInvalid case; create test program; it is untested currently !!!!
      return cmd.code(1 downto 0);    
    else
      return M_NOP;     
@@ -443,12 +442,15 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal halt          : boolean   := false;
   signal memReady      : std_logic := '0'; 
-  signal cmStall       : boolean   := false; -- stall caused by cache miss; re-issue load/store instruction that cause cache miss;
-  signal cmStallCouter : integer range 0 to CACHE_MISS_STALL_CLOCKS := 0;
+  
+  -- stall caused by cache miss; re-issue load/store instruction that cause cache miss and then bubble for predefined clocks number;
+  --
+  signal cmStall       : boolean   := false;
+  signal cmStallCouter : integer range 0 to CACHE_MISS_WAIT_CLOCKS := 0;  
   
   signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
   signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
-  constant pipe_len   : SCOREBOARD_PLEN := (ALUI_PIPE_LEN, CTR_PIPE_LEN, MEM_PIPE_LEN, 0);
+  constant pipe_len   : SCOREBOARD_PLEN := (ALUI_PIPE_LEN, CTR_PIPE_LEN, MEM_PIPE_LEN, 0); -- pipe length table (get pipe length by pipe id)
   
   COMPONENT A1_MMU IS
     PORT(   
@@ -517,7 +519,7 @@ BEGIN
                          );
   
   cmStall    <= not ToBoolean(memReady);                    
-  memInputOp <= GetMemOp(afterD, invalidAfterD, (cmStallCouter > 1));
+  memInputOp <= GetMemOp(afterD, invalidAfterD);
   
   MUU: entity work.A1_MMU(CACHE_MISS_SIM) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
               PORT MAP (clock  => clk, 
@@ -540,6 +542,8 @@ BEGIN
   variable i         : integer := 0; 
   variable j         : integer := 0; 
   variable testId    : integer := 0;  
+  
+  type testtype is array (1 to 26) of string(1 to 24);
   
   constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
                                    2  => "../../ASM/bin/out002.txt",
@@ -755,34 +759,41 @@ BEGIN
     
     ------------------------------ control unit ---------------------------- 
     
+    -- remember instruction address that we probably have to reissue in future if cache miss occur
+    --
     if afterD.itype = INSTR_MEM then 
-      ipM1 <= ip - 2;
+      ipM1 <= ip - 2;                           
     else
       ipM1 <= ipM1;
     end if;
     ipM2 <= ipM1;
     
+    -- process cache miss wait/stall counter
+    --
     if cmStall and cmStallCouter = 0 then
-      cmStallCouter <= CACHE_MISS_STALL_CLOCKS;
-    elsif cmStallCouter > 0 then
+      cmStallCouter <= CACHE_MISS_WAIT_CLOCKS;
+    elsif cmStallCouter /= 0 then
       cmStallCouter <= cmStallCouter-1;
     else
       cmStallCouter <= 0;
     end if;
     
+    -- main part of control unit. process instruction pointer (ip)
+    --
     if cmStall and cmStallCouter = 0 then                
       ip <= ipM2;    
     elsif halt or bubble then
       ip <= ip;
-    elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) and cmStallCouter = 0 then
+    elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) then
     
       if afterD.code(2 downto 0) = C_JMP  then
         ip <= to_uint(opB);          -- JMP, Jump Absolute Addr
       elsif  afterD.code(2 downto 0) = C_JRA  then
         ip <= to_uint(opB) + ip - 2; -- JRA, Jump Relative Addr
       else
-        ip <= ip+1;                  -- CAN BE HLT if re-issue MEM.
+        ip <= ip+1;                  -- can be undefined instruction for some reason.
       end if;
+      
     else
       ip <= ip+1;
     end if;    

@@ -114,7 +114,7 @@ begin
     
       if (optype1 = M_LOAD or optype1 = M_STORE) and (clocksToGetReady = 0) then
       
-        clocksToGetReady <= 3;
+        clocksToGetReady <= 5; --#TODO: 6 and greater FAIL TESTS!!!
         oready           <= '0';
       
       elsif (optype1 = M_LOAD or optype1 = M_STORE) and clocksToGetReady = 1 then

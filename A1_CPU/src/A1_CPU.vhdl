@@ -714,8 +714,6 @@ BEGIN
       afterD.op1 <= opA;
       afterD.op2 <= opB;
       
-      ipM1 <= ipM1;
-      
     else  
     
       if afterF.imm then -- push nop to afterF in next cycle, cause if afterF is immediate, next instructions is it's data
@@ -747,14 +745,13 @@ BEGIN
       end if;  
       ------------------------------ register fetch and bypassing from X to D ----------------------------
       
-      if afterD.itype = INSTR_MEM then 
-        ipM1 <= ip - 2;
-      else
-        ipM1 <= ipM1;
-      end if;
-      
     end if;  
     
+    if afterD.itype = INSTR_MEM then 
+      ipM1 <= ip - 2;
+    else
+      ipM1 <= ipM1;
+    end if;
     ipM2 <= ipM1;
     
     ------------------------------ control unit ---------------------------- 

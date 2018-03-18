@@ -38,6 +38,8 @@ package A0 is
   constant PIPE_ZERO_ELEM  : PIPE_ELEM    := (wbn => false, pid => "00", reg => 0);
   ----------------------------------------------------------------------------------------------------------------------- scoreboard parameters
   
+  constant CACHE_MISS_STALL_CLOCKS : integer := 5; -- We must know how long we have to wait MEM command if cache miss happened.
+  
   constant INSTR_ALUI : PIPE_ID_TYPE := "00";
   constant INSTR_CNTR : PIPE_ID_TYPE := "01";
   constant INSTR_MEM  : PIPE_ID_TYPE := "10"; 
@@ -442,8 +444,7 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal halt          : boolean   := false;
   signal memReady      : std_logic := '0'; 
   signal cmStall       : boolean   := false; -- stall caused by cache miss; re-issue load/store instruction that cause cache miss;
-  signal cmStallCouter : integer range 0 to 3 := 0;
-  signal memIsBusy     : boolean   := false;
+  signal cmStallCouter : integer range 0 to CACHE_MISS_STALL_CLOCKS := 0;
   
   signal   scoreboard : SCOREBOARD_TYPE := (others => 0);
   signal   wpipe      : SCOREBOARD_FIFO := (others => PIPE_ZERO_ELEM);
@@ -516,8 +517,7 @@ BEGIN
                          );
   
   cmStall    <= not ToBoolean(memReady);                    
-  memIsBusy  <= (cmStallCouter > 1);
-  memInputOp <= GetMemOp(afterD, invalidAfterD, memIsBusy);
+  memInputOp <= GetMemOp(afterD, invalidAfterD, (cmStallCouter > 1));
   
   MUU: entity work.A1_MMU(CACHE_MISS_SIM) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
               PORT MAP (clock  => clk, 
@@ -692,19 +692,24 @@ BEGIN
       
     end if;
     
-    bubble := bubble and (cmStallCouter = 0); -- we don't have to bubble if commands are not going to be actually executed!
+    bubble := bubble or (cmStallCouter > 0); 
     ------------------------------ scoreboard ------------------------------
     
     ------------------------------ instruction fetch and pipeline basics ------------------------------   
     rawCmdF := program(ip);
 
     imm_value  <= rawCmdF;
-    halt       <= halt or ( ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT)) and (not cmStall) and (cmStallCouter = 0) );
+    halt       <= halt or ( ((afterF.itype = INSTR_CNTR) and (afterF.code(2 downto 0) = C_HLT)) and (cmStallCouter = 0) );
     
     if bubble then 
     
-      afterF <= afterF;
-      afterD <= afterD;
+      if cmStallCouter /= 0 then
+        afterF <= CMD_NOP;
+        afterD <= CMD_NOP;
+      else     
+        afterF <= afterF;
+        afterD <= afterD;
+      end if;
       
       -- if stall happened then there is an opportunity to loose register that is not yet written to the register file. 
       -- This happens due to we don't actually repeat reading from register file when "afterD <= afterD" happened.
@@ -746,6 +751,9 @@ BEGIN
       ------------------------------ register fetch and bypassing from X to D ----------------------------
       
     end if;  
+   
+    
+    ------------------------------ control unit ---------------------------- 
     
     if afterD.itype = INSTR_MEM then 
       ipM1 <= ip - 2;
@@ -754,7 +762,14 @@ BEGIN
     end if;
     ipM2 <= ipM1;
     
-    ------------------------------ control unit ---------------------------- 
+    if cmStall and cmStallCouter = 0 then
+      cmStallCouter <= CACHE_MISS_STALL_CLOCKS;
+    elsif cmStallCouter > 0 then
+      cmStallCouter <= cmStallCouter-1;
+    else
+      cmStallCouter <= 0;
+    end if;
+    
     if cmStall and cmStallCouter = 0 then                
       ip <= ipM2;    
     elsif halt or bubble then
@@ -773,15 +788,7 @@ BEGIN
     end if;    
     ------------------------------ control unit ---------------------------- 
     
-    ------------------------------ write back ------------------------------   
-    if cmStall and cmStallCouter = 0 then
-      cmStallCouter <= 3;
-    elsif cmStallCouter > 0 then
-      cmStallCouter <= cmStallCouter-1;
-    else
-      cmStallCouter <= 0;
-    end if;
-    
+    ------------------------------ write back ------------------------------       
     if wpipe(0).wbn and (not cmStall) and (cmStallCouter = 0) then
       regs(wpipe(0).reg) <= opR;  
     end if;

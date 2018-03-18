@@ -109,12 +109,12 @@ begin
     elsif rising_edge(clock) then     
 
       addr    <= to_sint(addr1) + to_sint(addr2);
+      input1  <= input;  
       optype1 <= optype;
-      input1  <= input;
     
       if (optype1 = M_LOAD or optype1 = M_STORE) and (clocksToGetReady = 0) then
       
-        clocksToGetReady <= 5; --#TODO: 6 and greater FAIL TESTS!!!
+        clocksToGetReady <= CACHE_MISS_STALL_CLOCKS + 1; --#TODO: 6 and greater FAIL TESTS!!!
         oready           <= '0';
       
       elsif (optype1 = M_LOAD or optype1 = M_STORE) and clocksToGetReady = 1 then

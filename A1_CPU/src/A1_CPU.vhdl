@@ -417,8 +417,8 @@ ARCHITECTURE RTL OF A1_CPU IS
   
   signal ip   : integer range 0 to PROGRAM_MEMORY'high := 0;  -- instruction pointer
   
-  signal ip_last_mem1 : integer range 0 to PROGRAM_MEMORY'high := 0;
-  signal ip_last_mem2 : integer range 0 to PROGRAM_MEMORY'high := 0;
+  signal ipM1 : integer range 0 to PROGRAM_MEMORY'high := 0;
+  signal ipM2 : integer range 0 to PROGRAM_MEMORY'high := 0;
   
   signal afterF : Instruction := CMD_NOP; 
   signal afterD : Instruction := CMD_NOP; 
@@ -747,16 +747,16 @@ BEGIN
     end if;
     
     if afterD.itype = INSTR_MEM then 
-      ip_last_mem1 <= ip - 2;
+      ipM1 <= ip - 2;
     else
-      ip_last_mem1 <= ip_last_mem1;
+      ipM1 <= ipM1;
     end if;
     
-    ip_last_mem2 <= ip_last_mem1;
+    ipM2 <= ipM1;    
     
     ------------------------------ control unit ---------------------------- 
     if cmStall and cmStallCouter = 0 then                
-      ip <= ip_last_mem2;    
+      ip <= ipM2;    
     elsif halt or bubble then
       ip <= ip;
     elsif (afterD.itype = INSTR_CNTR and not invalidAfterD) and cmStallCouter = 0 then

@@ -36,63 +36,60 @@ def encodeCommand(tokens):
   if tokens[0] == 'i':
     bits |= 0x80000000 # set first bit if command is immediate
   
-  if tokens[1] == '1':
-    bits |= 0x40000000 # set second bit if command has write enable flag
-  
   if len(tokens) < 3: return bits
   ## ////////////////////////////////////////////////////////////////////////////////// instruction type
   
-  if tokens[2] == 'a':
+  if tokens[1] == 'a':
     bits |= 0x00000000    # alu is '00'
-  elif tokens[2] == 'm':
+  elif tokens[1] == 'm':
     bits |= 0x20000000    # mem is '10' 
-  elif tokens[2] == 'c':
+  elif tokens[1] == 'c':
     bits |= 0x10000000    # ctr is '01'
-  elif tokens[2] == 'f':
+  elif tokens[1] == 'f':
     bits |= 0x30000000    # fpu is '11'
 
-  if len(tokens) < 4: return bits  
+  if len(tokens) < 3: return bits  
   ## ////////////////////////////////////////////////////////////////////////////////// instruction op code
   
-  op = tokens[3]
+  op = tokens[2]
   if op in cmdDict.keys():
     opCodeMask = (cmdDict[op] << 24)
     bits |= opCodeMask
   
-  if len(tokens) < 5: return bits  
+  if len(tokens) < 4: return bits  
   ## //////////////////////////////////////////////////////////////////////////////////  registers
   
-  r0 = int(tokens[4][1:])
+  r0 = int(tokens[3][1:])
   bits |= (r0 << 20)
+  
+  if len(tokens) < 5: return bits
+  
+  r1 = int(tokens[4][1:])
+  bits |= (r1 << 16)
   
   if len(tokens) < 6: return bits
   
-  r1 = int(tokens[5][1:])
-  bits |= (r1 << 16)
-  
-  if len(tokens) < 7: return bits
-  
-  r2 = int(tokens[6][1:])
+  r2 = int(tokens[5][1:])
   bits |= (r2 << 12)
   
-  if len(tokens) < 8: return bits
+  if len(tokens) < 7: return bits
   ## //////////////////////////////////////////////////////////////////////////////////  mem offset, alu specific and cond flags
   
-  if tokens[2] == 'a' or tokens[2] == 'c': 
+  if tokens[1] == 'a' or tokens[1] == 'c': 
     signedFlag   = 0
-    if tokens[7] == 's': 
+    if tokens[6] == 's': 
       signedFlag = 1
     bits |= (signedFlag   << 11)
-  elif tokens[2] == 'm':
-    memOffs = int(tokens[7])
+  elif tokens[1] == 'm':
+    memOffs = int(tokens[6])
     if memOffs <= 255:
       bits |= (memOffs << 4)
     
   ## //////////////////////////////////////////////////////////////////////////////////  flags
   cond = ''
-  if len(tokens) < 10: 
+  if len(tokens) < 9: 
     return bits
-  cond = tokens[9] 
+  cond = tokens[8] 
   
   # N,Z,LT,LE,P
   flags = 0
@@ -112,8 +109,8 @@ def encodeCommand(tokens):
   
   bits |= flags
   
-  if len(tokens) < 11: return bits
-  cond = tokens[10]
+  if len(tokens) < 10: return bits
+  cond = tokens[9]
   
   if cond == 'p':
     bits |= 1 # last 'predicate' flag

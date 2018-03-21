@@ -17,16 +17,16 @@ cmdDict = {'nop' : 0,
            'mfh' : 12,
            'cmp' : 13,           
            'mul' : 15, 
-		   
+       
            'lw'  : 1,
            'sw'  : 2,
            'swp' : 3,
-		   
+       
            'jmp' : 1,
            'jra' : 4,  
            'hlt' : 2,
            'int' : 3,}
-   		   
+          
 def encodeCommand(tokens):
   
   bits = 0x00000000
@@ -51,7 +51,7 @@ def encodeCommand(tokens):
   elif tokens[2] == 'f':
     bits |= 0x30000000    # fpu is '11'
 
-  if len(tokens) < 4: return bits	
+  if len(tokens) < 4: return bits  
   ## ////////////////////////////////////////////////////////////////////////////////// instruction op code
   
   op = tokens[3]
@@ -59,7 +59,7 @@ def encodeCommand(tokens):
     opCodeMask = (cmdDict[op] << 24)
     bits |= opCodeMask
   
-  if len(tokens) < 5: return bits	
+  if len(tokens) < 5: return bits  
   ## //////////////////////////////////////////////////////////////////////////////////  registers
   
   r0 = int(tokens[4][1:])
@@ -78,26 +78,21 @@ def encodeCommand(tokens):
   if len(tokens) < 8: return bits
   ## //////////////////////////////////////////////////////////////////////////////////  mem offset, alu specific and cond flags
   
-  cond = ''
   if tokens[2] == 'a' or tokens[2] == 'c': 
     signedFlag   = 0
     if tokens[7] == 's': 
       signedFlag = 1
-	
     bits |= (signedFlag   << 11)
-	
-    if len(tokens) < 11: return bits
-    cond = tokens[10]
-	
   elif tokens[2] == 'm':
     memOffs = int(tokens[7])
     if memOffs <= 255:
       bits |= (memOffs << 4)
-  
-    if len(tokens) < 10: return bits
-    cond = tokens[9]
-	  
+    
   ## //////////////////////////////////////////////////////////////////////////////////  flags
+  cond = ''
+  if len(tokens) < 10: 
+    return bits
+  cond = tokens[9] 
   
   # N,Z,LT,LE,P
   flags = 0
@@ -105,7 +100,7 @@ def encodeCommand(tokens):
   if cond == 'z' or cond == 'eq':
     flags = 4
   elif cond == 'nz' or cond == 'ne':
-    flags = 8+4	
+    flags = 8+4  
   elif cond == 'lt':
     flags = 2
   elif cond == 'le':
@@ -138,7 +133,7 @@ def encodeLine(tokens):
     return float(tokens[1])
   else:
     return encodeCommand(tokens)
-	
+  
 def main(inFileName, outFileName, isBinary):
   
   openFileParams = "w"
@@ -151,7 +146,7 @@ def main(inFileName, outFileName, isBinary):
     tokens = line.rstrip().replace(" ", "").split(',')
     #print tokens
     cmdBin = encodeLine(tokens)
-	
+  
     if isBinary:
       bitStr = bin(cmdBin)[2:]
       o.write(bitStr.zfill(32))
@@ -180,10 +175,10 @@ def mainVHDL(inFileName, outFileName):
     print (tokens)
     cmdBin = encodeLine(tokens)
     strHex = hex(cmdBin)
-	
+  
     if strHex[-1] == 'L':
       strHex = strHex[:-1]
-	
+  
     if len(strHex) < 8:
       strHex = strHex + "0" * (10 - len(strHex))
     

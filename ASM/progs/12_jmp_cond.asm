@@ -6,11 +6,11 @@ di, 3
 i, 1, a, mov, R4     	
 di, 4
 r, 0, a, cmp, R0, R3, R4
-i, 0, c, jmp, R7, R7, R7, 0, 0, if, gt
+i, 0, c, jmp, R7, R7, R7, 0, if, gt
 di, 17  
 r, 0, a, nop, R0, R0, R0
 r, 1, a, add, R2, R3, R4
-i, 0, c, jmp, R7, R7, R7, 0, 0, if, le
+i, 0, c, jmp, R7, R7, R7, 0, if, le
 di, 16  
 r, 0, a, nop, R0, R0, R0
 r, 1, a, add, R1, R3, R2

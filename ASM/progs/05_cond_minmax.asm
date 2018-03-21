@@ -5,7 +5,7 @@ i, 1, a, mov, R3
 di, 3
 i, 1, a, mov, R4     	
 di, 4
-r, 0, a, sub, R0, R3, R4, 0, sf  
+r, 0, a, cmp, R0, R3, R4  
 r, 1, a, mov, R0, R0, R3, 0, 0, if, le
 r, 1, a, mov, R1, R0, R4, 0, 0, if, gt
 r, 1, a, mov, R2, R0, R4, 0, 0, if, lt  

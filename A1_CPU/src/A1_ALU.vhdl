@@ -114,8 +114,9 @@ begin
       resHigh <= std_logic_vector(rMul(63 downto 32)); -- always write this reg, so we must get the hight reg in next command immediately or loose it
        
       case code(1 downto 0) is
+        when "00"   => rMulc := resHigh;                             -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
         when "11"   => rMulc := std_logic_vector(rMul(31 downto 0)); -- constant A_MUL : STD_LOGIC_VECTOR(3 downto 0) := "1111"; 
-        when others => rMulc := resHigh;                             -- constant A_MFH : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+        when others => rMulc := resHigh;                             -- 
       end case;
        
       ----------------------------------------------------------------- logic group

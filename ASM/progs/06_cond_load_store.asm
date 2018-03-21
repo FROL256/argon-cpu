@@ -13,7 +13,7 @@ i, 1, a, mov, R7
 di, 7
 r, 0, m, sw,  R0, R4, R3, 10
 r, 0, m, sw,  R0, R5, R3, 11
-r, 0, a, sub, R2, R3, R4, 0, sf
+r, 0, a, cmp, R2, R3, R4
 r, 1, m, lw,  R0, R0, R3, 10, if, gt
 r, 1, m, lw,  R1, R0, R3, 10, if, le
 r, 1, m, lw,  R8, R0, R3, 10

@@ -14,7 +14,8 @@ cmdDict = {'nop' : 0,
            'or'  : 9,
            'not' : 10,
            'xor' : 11,
-           'mfh' : 12, 
+           'mfh' : 12,
+           'cmp' : 13,           
            'mul' : 15, 
 		   
            'lw'  : 1,
@@ -46,9 +47,9 @@ def encodeCommand(tokens):
   elif tokens[2] == 'm':
     bits |= 0x20000000    # mem is '10' 
   elif tokens[2] == 'c':
-    bits |= 0x10000000    # crl is '01'
+    bits |= 0x10000000    # ctr is '01'
   elif tokens[2] == 'f':
-    bits |= 0x30000000    # mem is '11'
+    bits |= 0x30000000    # fpu is '11'
 
   if len(tokens) < 4: return bits	
   ## ////////////////////////////////////////////////////////////////////////////////// instruction op code
@@ -80,15 +81,10 @@ def encodeCommand(tokens):
   cond = ''
   if tokens[2] == 'a' or tokens[2] == 'c': 
     signedFlag   = 0
-    setFlagsFlag = 0
     if tokens[7] == 's': 
       signedFlag = 1
-    if len(tokens) >= 9:
-      if tokens[8] == 'sf':
-        setFlagsFlag = 1
 	
-    bits |= (signedFlag   << 10)
-    bits |= (setFlagsFlag << 11)
+    bits |= (signedFlag   << 11)
 	
     if len(tokens) < 11: return bits
     cond = tokens[10]

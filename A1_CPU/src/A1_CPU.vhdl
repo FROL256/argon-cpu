@@ -62,9 +62,9 @@ package A0 is
   constant A_XOR   : STD_LOGIC_VECTOR(3 downto 0) := "1011";
   
   constant A_MFH   : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
+  constant A_CMP   : STD_LOGIC_VECTOR(3 downto 0) := "1101"; 
+  constant A_NN3   : STD_LOGIC_VECTOR(3 downto 0) := "1110";
   constant A_MUL   : STD_LOGIC_VECTOR(3 downto 0) := "1111";
-  --constant A_NN2   : STD_LOGIC_VECTOR(3 downto 0) := "1101";
-  --constant A_NN3   : STD_LOGIC_VECTOR(3 downto 0) := "1110";
             
   constant M_NOP   : STD_LOGIC_VECTOR(1 downto 0) := "00";
   constant M_LOAD  : STD_LOGIC_VECTOR(1 downto 0) := "01";
@@ -222,16 +222,23 @@ package body A0 is
     
     cmd.imm      := ToBoolean(data(31));          -- first bit is 'immediate' flag  
     cmd.we       := false;                        -- evaluate this flag later on decode stage!
-    cmd.itype    :=         data(29 downto 28);   -- next 2-bit instruction type (3-bit actually, 1 bit is reserved currently)
+    cmd.itype    :=         data(29 downto 28);   -- next 3-bit instruction type / pipe id 
     cmd.code     :=         data(27 downto 24);   -- next 4 bit for opcodes 
     cmd.reg0     := to_uint(data(23 downto 20));  -- next 4 bits for reg0
     cmd.reg1     := to_uint(data(19 downto 16));  -- next 4 bits for reg1
     cmd.reg2     := to_uint(data(15 downto 12));  -- next 4 bits for reg2 
-    cmd.memOffs  :=         data(11 downto 4);
+    cmd.memOffs  :=         data(11 downto 4);    -- next 8 bits for mem offs 
     
     if cmd.itype = INSTR_ALUI then                -- don't use memOffs, read flags instead
-      cmd.flags.S  := ToBoolean(cmd.memOffs(6)); 
-      cmd.flags.CF := ToBoolean(cmd.memOffs(7));
+      cmd.flags.S  := ToBoolean(cmd.memOffs(7)); 
+      
+      if cmd.code = A_CMP then
+        cmd.code     := A_SUB;
+        cmd.flags.CF := true;
+      else
+        cmd.flags.CF := false;
+      end if;
+      
     end if;
     
     cmd.flags.N  := ToBoolean(data(3));           -- last 4 bits for flags
@@ -521,7 +528,7 @@ BEGIN
   cmStall    <= not ToBoolean(memReady);                    
   memInputOp <= GetMemOp(afterD, invalidAfterD);
   
-  MUU: entity work.A1_MMU(CACHE_MISS_SIM) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
+  MUU: entity work.A1_MMU(TWO_CLOCK_ALWAYS) -- (TWO_CLOCK_ALWAYS, CACHE_MISS_SIM)
               PORT MAP (clock  => clk, 
                         reset  => rst, 
                         optype => memInputOp,  
@@ -778,7 +785,7 @@ BEGIN
       cmStallCouter <= 0;
     end if;
     
-    -- main part of control unit. process instruction pointer (ip)
+    -- main part of control unit; process instruction pointer (ip).
     --
     if cmStall and cmStallCouter = 0 then                
       ip <= ipM2;    

@@ -111,27 +111,27 @@ package A0 is
   
   -- ALUI: 
   --
-  -- F     F    F  F  F  FF  F
-  -- 01 00 CODE R0 R1 R2 00  FLAGS    R-type instruction; r, 1, a, add, R0, R1, R2  
-  -- 11 00 CODE R0 R1 0  00  FLAGS    I-type instruction; i, 1, a, add, R0, R1, 
-  --                                                      d, {-655362345}   
+  -- F    F    F  F  F  FF  F
+  -- 0000 CODE R0 R1 R2 00  FLAGS    R-type instruction; r, a, add, R0, R1, R2  
+  -- 1000 CODE R0 R1 0  00  FLAGS    I-type instruction; i, a, add, R0, R1, 
+  --                                                     d, {-655362345}   
  
   -- MEM: 
   --
-  -- F       F    F F  F  FF     F
-  -- 00 10 0 CODE 0 R1 [R2+OFFS] FLAGS  R-type instruction; r, 0, m, sw, 0, R1, R2, 255 // mem(R2+255) := R1;
-  -- 10 10 0 CODE 0 R1 [R2+OFFS] FLAGS  I-type instruction; i, 0, m, sw, 0, R1, R2, 255 // mem(R2+255) := -655362345; 
-  --                                                        d, {-655362345}             //            
-  --                                                        r, 1, m, lw R0, 0, R2, 255  // R0 := mem(R2+255);
+  -- F      F    F F  F  FF     F
+  -- 0010 0 CODE 0 R1 [R2+OFFS] FLAGS  R-type instruction; r, m, sw, 0, R1, R2, 255    // mem(R2+255) := R1;
+  -- 1010 0 CODE 0 R1 [R2+OFFS] FLAGS  I-type instruction; i, m, sw, 0, R1, R2, 255    // mem(R2+255) := -655362345; 
+  --                                                       d, {-655362345}             //            
+  --                                                       r, 1, m, lw R0, 0, R2, 255  // R0 := mem(R2+255);
                                                        
   -- CONTROL:  
-  -- F     F    F F  F  FF    F                                              
-  -- 00 01 CODE 0 R1 0  00    FLAGS  R-type instruction; r, 0, c, jmp, 0, 0, R2 // jmp [R2]
-  -- 10 01 CODE 0 0  0  00    FLAGS  I-type instruction; i, 0, c, jmp           // jmp [ADDRESS]
-  --                                                        d, {ADDRESS}
+  -- F    F    F F  F  FF    F                                              
+  -- 0001 CODE 0 R1 0  00    FLAGS  R-type instruction; r, c, jmp, 0, 0, R2 // jmp [R2]
+  -- 1001 CODE 0 0  0  00    FLAGS  I-type instruction; i, c, jmp           // jmp [ADDRESS]
+  --                                                    d, {ADDRESS}
  
   -- FLOAT:
-  -- 01 11 ... same as for ALUI.
+  -- 0011  ... same as for ALUI.
   
   -- OPCODE = "00" & CODE where "00" is instruction type
   --
@@ -680,9 +680,9 @@ BEGIN
     end loop;
     
     -- try to issue command in the pipeline; if can't set "bubble := true;"
-    -- (0) in scoreboard means input registers are already written; 
-    -- (1) in scoreboard means result can be bypassed; 
-    -- (2 and greater) in scoreboard means result is not ready.
+    -- "0" in scoreboard means input registers are already written; 
+    -- "1" in scoreboard means result is going to be written and can be bypassed right now from "opR"; 
+    -- "2" (and greater) in scoreboard means result is not ready.
     --
     bubble := ( (scoreboard(afterD.reg1) > 1 and NeedReg1(afterD) ) or 
                 (scoreboard(afterD.reg2) > 1 and NeedReg2(afterD) ) );  -- detect RAW  

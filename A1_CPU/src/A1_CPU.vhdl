@@ -588,7 +588,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low+26 to binFiles'high loop -- binFiles'low
+  for testId in binFiles'low to binFiles'high loop -- binFiles'low
       
     clk <= '0';
     rst <= '0';

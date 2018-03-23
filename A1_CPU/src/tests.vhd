@@ -54,7 +54,7 @@ package body ATESTS is
     when 24     => return ((R0 = 7)  and (R1 = 0)  and (R2 = 7));
     when 25     => return ((R0 = 726)and (R1 = 720)and (R2 = 7));
     when 26     => return ((R0 = 8)  and (R1 = 8)  and (R2 = 0));
-    when 27     => return ((R0 = 10) and (R1 = -1) and (R2 = 1));
+    when 27     => return ((R0 = 10) and (R1 = -2) and (R2 = 1));
     when others => return false;
 		
   end case;

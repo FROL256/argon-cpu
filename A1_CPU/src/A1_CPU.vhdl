@@ -62,7 +62,7 @@ package A0 is
   constant A_XOR   : STD_LOGIC_VECTOR(3 downto 0) := "1011";
   
   constant A_MFH   : STD_LOGIC_VECTOR(3 downto 0) := "1100"; -- Move From High
-  constant A_CMP   : STD_LOGIC_VECTOR(3 downto 0) := "1101"; 
+  constant A_CMP   : STD_LOGIC_VECTOR(3 downto 0) := "1101"; -- 
   constant A_NN3   : STD_LOGIC_VECTOR(3 downto 0) := "1110";
   constant A_MUL   : STD_LOGIC_VECTOR(3 downto 0) := "1111";
             
@@ -83,7 +83,7 @@ package A0 is
   type DEBUG_COMMAND is (DA_NOP, DA_SHL, DA_SHR, DA_MOV, 
                          DA_ADD, DA_ADC, DA_SUB, DA_SBC,
                          DA_AND, DA_OR,  DA_NOT, DA_XOR,
-                         DA_MFH, DA_MUL, DA_NN1, DA_NN2,
+                         DA_MFH, DA_MUL, DA_CMP, DA_NN2,
                          DM_NOP, DM_LOAD, DM_STORE, 
                          DC_NOP, DC_JMP,  DC_JRA, DC_HLT, DC_INT);
                           
@@ -165,7 +165,7 @@ package A0 is
   function GetWriteEnableBit(cmd : Instruction) return boolean;
   
   function GetRes(rtype  : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD;
-  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
+  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
   function GetAddrOffset(afterD : Instruction; imm_value : WORD) return WORD;
   
@@ -198,7 +198,7 @@ package body A0 is
     
     when "001100" => return DA_MFH;
     when "001111" => return DA_MUL;
-    when "001101" => return DA_NN1;
+    when "001101" => return DA_CMP;
     when "001110" => return DA_NN2;
     
     when "100000" => return DM_NOP;
@@ -271,25 +271,14 @@ package body A0 is
    end if; 
   end GetRes;
  
-  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD is
-    variable xA : WORD;
+  function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD is
   begin 
   
     if afterX.reg = afterD.reg1 and afterX.wbn then   -- bypass result from X to op1
-      xA := xRes;
+      return xRes;
     else 
-      xA := afterD.op1;
-    end if;
-    
-    -- if afterD.itype = INSTR_MEM then                -- alter second op to compute address if mem istruction occured       
-    --   if afterD.imm then 
-    --     xA := imm_value;
-    --   else
-    --     xA := x"000000" & afterD.memOffs(7 downto 0);
-    --   end if;
-    -- end if;
-    
-    return xA;
+      return afterD.op1;
+    end if;   
     
   end GetOpA;
   
@@ -515,7 +504,7 @@ BEGIN
   -- bypass values
   --
   opR   <= GetRes(wpipe(0).pid, aluOut, memOut);
-  opA   <= GetOpA(afterD, wpipe(0), opR, imm_value);
+  opA   <= GetOpA(afterD, wpipe(0), opR);
   opB   <= GetOpB(afterD, wpipe(0), opR);
   aOffs <= GetAddrOffset(afterD, imm_value);
   
@@ -599,7 +588,7 @@ BEGIN
   
   begin     
     
-  for testId in binFiles'low to binFiles'high loop -- binFiles'low
+  for testId in binFiles'low+26 to binFiles'high loop -- binFiles'low
       
     clk <= '0';
     rst <= '0';

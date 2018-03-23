@@ -167,6 +167,7 @@ package A0 is
   function GetRes(rtype  : PIPE_ID_TYPE; aluOut : WORD; memOut : WORD) return WORD;
   function GetOpA(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD; imm_value : WORD) return WORD;
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD;
+  function GetAddrOffset(afterD : Instruction; imm_value : WORD) return WORD;
   
   function GetMemOp(cmd : Instruction; isInvalid : boolean) return INSTR_MEM_TYPE;
   function GetAluOp(cmd : Instruction) return ALU_MEM_TYPE;
@@ -280,17 +281,29 @@ package body A0 is
       xA := afterD.op1;
     end if;
     
-    if (afterD.itype = INSTR_MEM) then                -- alter second op to compute address if mem istruction occured       
-      if afterD.imm then 
-        xA := imm_value;
-      else
-        xA := x"000000" & afterD.memOffs(7 downto 0);
-      end if;
-    end if;
+    -- if afterD.itype = INSTR_MEM then                -- alter second op to compute address if mem istruction occured       
+    --   if afterD.imm then 
+    --     xA := imm_value;
+    --   else
+    --     xA := x"000000" & afterD.memOffs(7 downto 0);
+    --   end if;
+    -- end if;
     
     return xA;
     
   end GetOpA;
+  
+  function GetAddrOffset(afterD : Instruction; imm_value : WORD) return WORD is
+     variable xA : WORD;
+  begin 
+       
+    if afterD.imm then 
+      return imm_value;
+    else
+      return x"000000" & afterD.memOffs(7 downto 0);
+    end if;
+    
+  end GetAddrOffset;
   
   function GetOpB(afterD : Instruction; afterX : PIPE_ELEM; xRes : WORD) return WORD is
     variable xA : WORD;
@@ -495,13 +508,16 @@ ARCHITECTURE RTL OF A1_CPU IS
   signal opB : WORD := x"00000000"; -- bypassed input to ALU or MEM (second operand) 
   signal opR : WORD := x"00000000"; -- result of command after X stage (or M or other).
   
+  signal aOffs : WORD := x"00000000";
+  
 BEGIN 
   
   -- bypass values
   --
-  opR <= GetRes(wpipe(0).pid, aluOut, memOut);
-  opA <= GetOpA(afterD, wpipe(0), opR, imm_value);
-  opB <= GetOpB(afterD, wpipe(0), opR);
+  opR   <= GetRes(wpipe(0).pid, aluOut, memOut);
+  opA   <= GetOpA(afterD, wpipe(0), opR, imm_value);
+  opB   <= GetOpB(afterD, wpipe(0), opR);
+  aOffs <= GetAddrOffset(afterD, imm_value);
   
   -- here we have to deal with flags values and predicate commands
   --
@@ -532,9 +548,9 @@ BEGIN
               PORT MAP (clock  => clk, 
                         reset  => rst, 
                         optype => memInputOp,  
-                        addr1  => opA,
+                        addr1  => aOffs,
                         addr2  => opB,                         
-                        input  => afterD.op1,
+                        input  => opA, 
                         output => memOut,
                         oready => memReady
                        );    
@@ -550,7 +566,7 @@ BEGIN
   variable j         : integer := 0; 
   variable testId    : integer := 0;  
   
-  type testtype is array (1 to 26) of string(1 to 24);
+  type testtype is array (1 to 27) of string(1 to 24);
   
   constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
                                    2  => "../../ASM/bin/out002.txt",
@@ -577,65 +593,66 @@ BEGIN
                                    23 => "../../ASM/bin/out023.txt",
                                    24 => "../../ASM/bin/out024.txt",
                                    25 => "../../ASM/bin/out025.txt",
-                                   26 => "../../ASM/bin/out026.txt"
+                                   26 => "../../ASM/bin/out026.txt",
+                                   27 => "../../ASM/bin/out027.txt"
                                   );
   
   begin     
     
   for testId in binFiles'low to binFiles'high loop -- binFiles'low
       
-   clk <= '0';
-   rst <= '0';
-   
-   ------------------------------------ read program from file -------------------------------------------------
-   file_open(file_PROG, binFiles(testId), read_mode); 
-     
-   i := 0;
-   while not endfile(file_PROG) loop   
-     readline(file_PROG, v_ILINE); 
-     read(v_ILINE, v_CMD);
-     program(i) <= v_CMD;
-     i := i+1;    
-   end loop;
-   
-   file_close(file_PROG);
-   ------------------------------------ reset and begin to work -------------------------------------------------  
-   
-   rst <= '1'; 
-   wait for 10 ns;   
-   
-   rst <= '0';
-   wait for 10 ns;
-   
-   i := 0;
-   while i < 1000 loop     
-     wait for 5 ns; 
-     clk  <= not clk;
-     i := i+1;
-     if halt then
-       for i in 0 to 6 loop -- you will need to withdraw 35 ns (7x5=35) from the simulation time to get real execution time.
-         wait for 5 ns; 
-         clk  <= not clk;
-       end loop;
-       exit;
-     end if;
-     
-   end loop;   
-
-   ------------------------------------ finish                  ------------------------------------------------- 
-   
-   if CheckTest(testId, to_sint(regs(0)), to_sint(regs(1)), to_sint(regs(2))) then
-     report "TEST " & integer'image(testId) & " PASSED!";
-   else
-     report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = " & integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
-   end if;
-   
-   --exit;
-   
-   end loop; 
-   
-   report "end of simulation" severity failure;
-   
+    clk <= '0';
+    rst <= '0';
+    
+    ------------------------------------ read program from file -------------------------------------------------
+    file_open(file_PROG, binFiles(testId), read_mode); 
+      
+    i := 0;
+    while not endfile(file_PROG) loop   
+      readline(file_PROG, v_ILINE); 
+      read(v_ILINE, v_CMD);
+      program(i) <= v_CMD;
+      i := i+1;    
+    end loop;
+    
+    file_close(file_PROG);
+    ------------------------------------ reset and begin to work -------------------------------------------------  
+    
+    rst <= '1'; 
+    wait for 10 ns;   
+    
+    rst <= '0';
+    wait for 10 ns;
+    
+    i := 0;
+    while i < 1000 loop     
+      wait for 5 ns; 
+      clk  <= not clk;
+      i := i+1;
+      if halt then
+        for i in 0 to 6 loop -- you will need to withdraw 35 ns (7x5=35) from the simulation time to get real execution time.
+          wait for 5 ns; 
+          clk  <= not clk;
+        end loop;
+        exit;
+      end if;
+      
+    end loop;   
+    
+    ------------------------------------ finish                  ------------------------------------------------- 
+    
+    if CheckTest(testId, to_sint(regs(0)), to_sint(regs(1)), to_sint(regs(2))) then
+      report "TEST " & integer'image(testId) & " PASSED!";
+    else
+      report "TEST " & integer'image(testId) & " FAILED! " & ": R0 = " & integer'image(to_sint(regs(0))) & ", R1 = " & integer'image(to_sint(regs(1))) & ", R2 = " & integer'image(to_sint(regs(2))); 
+    end if;
+    
+    --exit;
+    
+    end loop; 
+    
+    report "end of simulation" severity failure;
+    
   end process clock;
   ------------------------------------ this is only for simulation purposes ------------------------------------
     

@@ -137,11 +137,20 @@ begin
       end if;
        
       case code(1 downto 0) is
-        when "01"   => rShift := xA(30 downto 0) & '0';     -- replace with sll
-                       if flags.S then 
-                         rShift(31) := shiftS;
-                       end if;  
-        when "10"   => rShift := shiftS & xA(31 downto 1);  -- replace with srl
+        when "01"   => 
+          if flags.S then
+            rShift := STD_LOGIC_VECTOR(shift_left(   signed(xA), to_uint(xB(4 downto 0)) ));
+          else
+            rShift := STD_LOGIC_VECTOR(shift_left( unsigned(xA), to_uint(xB(4 downto 0)) ));
+          end if;
+          
+        when "10"   => 
+           if flags.S then
+             rShift := STD_LOGIC_VECTOR(shift_right(   signed(xA), to_uint(xB(4 downto 0)) ));
+           else
+             rShift := STD_LOGIC_VECTOR(shift_right( unsigned(xA), to_uint(xB(4 downto 0)) ));
+           end if;
+                       
         when "11"   => rShift := xB;
         when others => rShift := x"00000000";
       end case;

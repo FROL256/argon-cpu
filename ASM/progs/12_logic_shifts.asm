@@ -5,8 +5,8 @@ i, a, mov, R3
 di, 1
 i, a, mov, R4
 dh, 0xFFFFFFFE
-r, a, shl, R0, R3
-r, a, shr, R1, R4, R0, s
+r, a, shl, R0, R3, R3
+r, a, shr, R1, R4, R3, s
 r, a, nop
 r, c, hlt
 r, c, hlt

@@ -1,12 +1,14 @@
 r, a, xor, R0, R0, R0
+i, a, mov, R9
+di, 1
 i, a, mov, R4 
 di, 16
 i, a, mov, R5
 di, 2
 i, a, mov, R6
 di, 256
-r, a, shl, R2, R5
-r, a, shr, R3, R4
+r, a, shl, R2, R5, R9
+r, a, shr, R3, R4, R9
 r, a, add, R3, R2, R3
 r, a, mul, R2, R2, R3
 i, a, sub, R1, R2

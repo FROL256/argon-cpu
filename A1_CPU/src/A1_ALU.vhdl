@@ -63,8 +63,7 @@ begin
     variable rMul   : unsigned(63 downto 0) := (others => '0'); -- result of true multiplication  
     
     variable carryIn : std_logic := '0'; 
-    variable zero    : std_logic := '0'; 
-    variable shiftS  : std_logic := '0';    
+    variable zero    : std_logic := '0';    
   
   begin
 
@@ -130,12 +129,6 @@ begin
        
       ----------------------------------------------------------------- shift group
       -- 
-      if flags.S then  
-        shiftS := xA(31);   -- arithmetic shifts
-      else
-        shiftS := '0';      -- common shifts
-      end if;
-       
       case code(1 downto 0) is
         when "01"   => 
           if flags.S then

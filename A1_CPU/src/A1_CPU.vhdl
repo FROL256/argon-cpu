@@ -555,7 +555,7 @@ BEGIN
   variable j         : integer := 0; 
   variable testId    : integer := 0;  
   
-  type testtype is array (1 to 27) of string(1 to 24);
+  type testtype is array (1 to 28) of string(1 to 24);
   
   constant binFiles : testtype := (1  => "../../ASM/bin/out001.txt", 
                                    2  => "../../ASM/bin/out002.txt",
@@ -583,7 +583,8 @@ BEGIN
                                    24 => "../../ASM/bin/out024.txt",
                                    25 => "../../ASM/bin/out025.txt",
                                    26 => "../../ASM/bin/out026.txt",
-                                   27 => "../../ASM/bin/out027.txt"
+                                   27 => "../../ASM/bin/out027.txt",
+                                   28 => "../../ASM/bin/out028.txt"
                                   );
   
   begin     
